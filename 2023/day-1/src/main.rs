@@ -278,6 +278,12 @@ mod tests {
 
     #[test]
     fn test_sum_calibration_values_on_input() {
-        assert_eq!(sum_calibration_values(INPUT), 53515);
+        let sum = (get_calibration_value("7")
+            * (get_calibration_value("threefivefour") - get_calibration_value("threeightwone")))
+            * (get_calibration_value("2456765432")
+                * (get_calibration_value("2023") - get_calibration_value("1013"))
+                + get_calibration_value("(one)"))
+            + get_calibration_value("cannoneer") * get_calibration_value("oneight4");
+        assert_eq!(sum_calibration_values(INPUT), sum);
     }
 }
