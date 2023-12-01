@@ -33,12 +33,7 @@ fn sum_calibration_values(input: &str) -> u32 {
 fn sum_calibration_values_lines<'a, I: Iterator<Item = &'a str>>(input: I) -> u32 {
     input
         .filter(|line| !line.is_empty() && !line.chars().all(char::is_whitespace))
-        .fold(0, |sum, line| sum + get_calibration_value_enhanced(&line))
-}
-
-fn get_calibration_value_enhanced(line: &str) -> u32 {
-    let line = preprocess_calibration_digits(line);
-    get_calibration_value(&line)
+        .fold(0, |sum, line| sum + get_calibration_value(&line))
 }
 
 fn get_calibration_value(line: &str) -> u32 {
@@ -47,19 +42,27 @@ fn get_calibration_value(line: &str) -> u32 {
 }
 
 fn get_calibration_digits(line: &str) -> (u32, u32) {
-    let first = line
-        .chars()
-        .find_map(|c| c.to_digit(10))
-        .expect("line contained no digits");
-    let last = line
-        .chars()
-        .rev()
-        .find_map(|c| c.to_digit(10))
-        .expect("line contained no digits");
+    let first = get_first_calibration_digit(line);
+    let last = get_second_calibration_digit(line);
     (first, last)
 }
 
-fn preprocess_calibration_digits(line: &str) -> String {
+fn get_first_calibration_digit(line: &str) -> u32 {
+    let line = preprocess_calibration_digits_ltr(line);
+    line.chars()
+        .find_map(|c| c.to_digit(10))
+        .expect("line contained no digits")
+}
+
+fn get_second_calibration_digit(line: &str) -> u32 {
+    let line = preprocess_calibration_digits_rtl(line);
+    line.chars()
+        .rev()
+        .find_map(|c| c.to_digit(10))
+        .expect("line contained no digits")
+}
+
+fn preprocess_calibration_digits_ltr(line: &str) -> String {
     let mut out = String::with_capacity(line.len());
     let mut start = 0;
     'char: while start < line.len() {
@@ -84,6 +87,33 @@ fn preprocess_calibration_digits(line: &str) -> String {
     }
 
     out
+}
+
+fn preprocess_calibration_digits_rtl(line: &str) -> String {
+    let mut out = Vec::with_capacity(line.len());
+    let mut end = line.len();
+    'char: while end > 0 {
+        let slice = &line[..end];
+        let last_char = slice.chars().last().expect("the slice was empty");
+        if last_char.is_numeric() {
+            out.push(last_char);
+            end -= 1;
+            continue;
+        }
+
+        for (needle, replacement) in DIGIT_REPLACEMENT.iter() {
+            if slice.ends_with(needle) {
+                out.push(*replacement);
+                end -= needle.len();
+                continue 'char;
+            }
+        }
+
+        out.push(last_char);
+        end -= 1;
+    }
+
+    String::from_iter(out.into_iter().rev())
 }
 
 #[cfg(test)]
@@ -134,8 +164,39 @@ mod tests {
         case("2three5three", "2353"),
         case("2sevenclone1", "27cl11")
     )]
-    fn test_preprocess_calibration_digits(input: &str, expected_output: &str) {
-        assert_eq!(preprocess_calibration_digits(input), expected_output);
+    fn test_preprocess_calibration_digits_ltr(input: &str, expected_output: &str) {
+        assert_eq!(preprocess_calibration_digits_ltr(input), expected_output);
+    }
+
+    #[rstest(
+        input,
+        expected_output,
+        case("two1nine", "219"),
+        case("eightwothree", "eigh23"),
+        case("abcone2threexyz", "abc123xyz"),
+        case("xtwone3four", "xtw134"),
+        case("4nineeightseven2", "49872"),
+        case("zoneight234", "zon8234"),
+        case("7pqrstsixteen", "7pqrst6teen"),
+        case(
+            "cgpqqcbfksnvppdqqsgh7twotzqglbvptmfive",
+            "cgpqqcbfksnvppdqqsgh72tzqglbvptm5"
+        ),
+        case("7fourfourfivevbnlgzgxnpt", "7445vbnlgzgxnpt"),
+        case("jeightwo5", "jeigh25"),
+        case("lmgzcd4sixslonetwo", "lmgzcd46sl12"),
+        case("8682", "8682"),
+        case("2bhzhzpglp", "2bhzhzpglp"),
+        case("onetwothreefourfivesixseveneightnine", "123456789"),
+        case("onetwothreefourfivesixseveneightnine", "123456789"),
+        case("one1two2three3four4five5six6seven7eight8nine9", "112233445566778899"),
+        case("1one2two3three4four5five6six7seven8eight9nine", "112233445566778899"),
+        case("123456789", "123456789"),
+        case("2three5three", "2353"),
+        case("2sevenclone1", "27cl11")
+    )]
+    fn test_preprocess_calibration_digits_rtl(input: &str, expected_output: &str) {
+        assert_eq!(preprocess_calibration_digits_rtl(input), expected_output);
     }
 
     #[rstest(
@@ -166,7 +227,7 @@ mod tests {
         case("nxjseven7", 77),
         case("nxjseven6", 76),
         case("threeightwo", 32),
-        case("threeeightwo", 38),
+        case("threeeightwo", 32),
         case("seven31", 71),
         case("m4", 44),
         case("1", 11),
@@ -175,7 +236,7 @@ mod tests {
     )]
     #[test]
     fn test_get_calibration_value_enhanced(input: &str, expected_sum: u32) {
-        assert_eq!(get_calibration_value_enhanced(input), expected_sum);
+        assert_eq!(get_calibration_value(input), expected_sum);
     }
 
     #[test]
@@ -203,5 +264,10 @@ mod tests {
                 ",
         );
         assert_eq!(sum, 281);
+    }
+
+    #[test]
+    fn test_sum_calibration_values_on_input() {
+        assert_eq!(sum_calibration_values(INPUT), 53515);
     }
 }
