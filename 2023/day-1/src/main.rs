@@ -4,18 +4,28 @@ use std::collections::HashMap;
 const INPUT: &str = include_str!("../input.txt");
 
 lazy_static! {
-    static ref DIGIT_REPLACEMENT: HashMap<&'static str, char> = {
+    static ref DIGIT_REPLACEMENT: HashMap<&'static str, u32> = {
         let mut map = HashMap::new();
-        map.insert("one", '1');
-        map.insert("two", '2');
-        map.insert("three", '3');
-        map.insert("four", '4');
-        map.insert("five", '5');
-        map.insert("six", '6');
-        map.insert("seven", '7');
-        map.insert("eight", '8');
-        map.insert("nine", '9');
-        map.insert("zero", '0');
+        map.insert("1", 1);
+        map.insert("2", 2);
+        map.insert("3", 3);
+        map.insert("4", 4);
+        map.insert("5", 5);
+        map.insert("6", 6);
+        map.insert("7", 7);
+        map.insert("8", 8);
+        map.insert("9", 9);
+        map.insert("0", 0);
+        map.insert("one", 1);
+        map.insert("two", 2);
+        map.insert("three", 3);
+        map.insert("four", 4);
+        map.insert("five", 5);
+        map.insert("six", 6);
+        map.insert("seven", 7);
+        map.insert("eight", 8);
+        map.insert("nine", 9);
+        map.insert("zero", 0);
         map
     };
 }
@@ -26,94 +36,157 @@ fn main() {
     println!("The sum of all calibration values is {}", sum);
 }
 
+/// Sums the calibration values present in the given input string.
+///
+/// # Arguments
+///
+/// * `input` - The input string containing individual calibration values.
+///
+/// # Returns
+///
+/// The sum of all calibration values present in the input string.
 fn sum_calibration_values(input: &str) -> u32 {
     sum_calibration_values_lines(input.lines())
 }
 
+/// Sums up the calibration values from the input lines.
+///
+/// This function takes an iterator of string references as input and returns the sum
+/// of all calibration values found in the non-empty lines. A calibration value is
+/// extracted from a line using the [`get_calibration_value`] function.
+///
+/// # Arguments
+///
+/// * `input` - An iterator of string references representing the input lines.
+///
+/// # Returns
+///
+/// The sum of all calibration values found in the input lines.
+///
+/// # Examples
+///
+/// ```
+/// let lines = vec![
+///     "12",
+///     "",
+///     "  ",
+///     "34",
+///     "56",
+///     "  78 ",
+/// ];
+///
+/// let sum = sum_calibration_values_lines(lines.iter());
+/// assert_eq!(sum, 12 + 34 + 56 + 78);
+/// ```
 fn sum_calibration_values_lines<'a, I: Iterator<Item = &'a str>>(input: I) -> u32 {
     input
         .filter(|line| !line.is_empty() && !line.chars().all(char::is_whitespace))
         .fold(0, |sum, line| sum + get_calibration_value(&line))
 }
 
+/// Extracts the calibration value from a given line.
+///
+/// # Arguments
+///
+/// * `line` - A string slice representing the line of text.
+///
+/// # Returns
+///
+/// The calibration value as an unsigned 32-bit integer.
 fn get_calibration_value(line: &str) -> u32 {
     let (first, second) = get_calibration_digits(line);
     first * 10 + second
 }
 
+/// Extracts the calibration digits from a given line.
+///
+/// # Arguments
+///
+/// * `line` - The line containing the calibration digits.
+///
+/// # Returns
+///
+/// A tuple containing the first and second calibration digits found in the line.
+///
+/// # Example
+///
+/// ```
+/// let line = "Calibration digits: one23 34";
+/// let (first, second) = get_calibration_digits(line);
+/// assert_eq!(first, 1);
+/// assert_eq!(second, 4);
+/// ```
 fn get_calibration_digits(line: &str) -> (u32, u32) {
     let first = get_first_calibration_digit(line);
     let last = get_second_calibration_digit(line);
     (first, last)
 }
 
+/// Returns the first calibration digit found in the given line.
+///
+/// This function searches for a specific pattern in the line and returns the corresponding
+/// calibration digit. The line parameter is a string slice that represents the line to search in.
+/// The function returns an unsigned 32-bit integer that represents the calibration digit found. If
+/// no digit is found, the function panics with an error message.
+///
+/// # Arguments
+///
+/// * `line` - A string slice representing the line to search in.
+///
+/// # Panics
+///
+/// This function panics if the line contains no digits.
+///
+/// # Examples
+///
+/// ```rust
+/// let line = "one 2 3 four";
+/// let result = get_first_calibration_digit(line);
+/// assert_eq!(result, 1);
+/// ```
 fn get_first_calibration_digit(line: &str) -> u32 {
-    let line = preprocess_calibration_digits_ltr(line);
-    line.chars()
-        .find_map(|c| c.to_digit(10))
-        .expect("line contained no digits")
-}
-
-fn get_second_calibration_digit(line: &str) -> u32 {
-    let line = preprocess_calibration_digits_rtl(line);
-    line.chars()
-        .rev()
-        .find_map(|c| c.to_digit(10))
-        .expect("line contained no digits")
-}
-
-fn preprocess_calibration_digits_ltr(line: &str) -> String {
-    let mut out = String::with_capacity(line.len());
     let mut start = 0;
-    'char: while start < line.len() {
-        let slice = &line[start..];
-        let first_char = slice.chars().next().expect("the slice was empty");
-        if first_char.is_numeric() {
-            out.push(first_char);
-            start += 1;
-            continue;
-        }
-
-        for (needle, replacement) in DIGIT_REPLACEMENT.iter() {
-            if slice.starts_with(needle) {
-                out.push(*replacement);
-                start += needle.len();
-                continue 'char;
+    while start < line.len() {
+        for (&needle, &replacement) in DIGIT_REPLACEMENT.iter() {
+            if line[start..].starts_with(needle) {
+                return replacement;
             }
         }
-
-        out.push(first_char);
         start += 1;
     }
 
-    out
+    panic!("line contained no digits");
 }
 
-fn preprocess_calibration_digits_rtl(line: &str) -> String {
-    let mut out = Vec::with_capacity(line.len());
+/// Returns the second calibration digit from a given line.
+///
+/// # Arguments
+///
+/// * `line` - A string slice containing the line to search for the second calibration digit.
+///
+/// # Panics
+///
+/// This function will panic if the given line does not contain any digits.
+///
+/// # Examples
+///
+/// ```
+/// let line = "one 2 3 four";
+/// let digit = get_second_calibration_digit(line);
+/// assert_eq!(result, 4);
+/// ```
+fn get_second_calibration_digit(line: &str) -> u32 {
     let mut end = line.len();
-    'char: while end > 0 {
-        let slice = &line[..end];
-        let last_char = slice.chars().last().expect("the slice was empty");
-        if last_char.is_numeric() {
-            out.push(last_char);
-            end -= 1;
-            continue;
-        }
-
-        for (needle, replacement) in DIGIT_REPLACEMENT.iter() {
-            if slice.ends_with(needle) {
-                out.push(*replacement);
-                end -= needle.len();
-                continue 'char;
+    while end > 0 {
+        for (&needle, &replacement) in DIGIT_REPLACEMENT.iter() {
+            if line[..end].ends_with(needle) {
+                return replacement;
             }
         }
-
-        out.push(last_char);
         end -= 1;
     }
 
-    String::from_iter(out.into_iter().rev())
+    panic!("line contained no digits");
 }
 
 #[cfg(test)]
@@ -135,68 +208,6 @@ mod tests {
             get_calibration_digits(input),
             (expected_first, expected_second)
         );
-    }
-
-    #[rstest(
-        input,
-        expected_output,
-        case("two1nine", "219"),
-        case("eightwothree", "8wo3"),
-        case("abcone2threexyz", "abc123xyz"),
-        case("xtwone3four", "x2ne34"),
-        case("4nineeightseven2", "49872"),
-        case("zoneight234", "z1ight234"),
-        case("7pqrstsixteen", "7pqrst6teen"),
-        case(
-            "cgpqqcbfksnvppdqqsgh7twotzqglbvptmfive",
-            "cgpqqcbfksnvppdqqsgh72tzqglbvptm5"
-        ),
-        case("7fourfourfivevbnlgzgxnpt", "7445vbnlgzgxnpt"),
-        case("jeightwo5", "j8wo5"),
-        case("lmgzcd4sixslonetwo", "lmgzcd46sl12"),
-        case("8682", "8682"),
-        case("2bhzhzpglp", "2bhzhzpglp"),
-        case("onetwothreefourfivesixseveneightnine", "123456789"),
-        case("onetwothreefourfivesixseveneightnine", "123456789"),
-        case("one1two2three3four4five5six6seven7eight8nine9", "112233445566778899"),
-        case("1one2two3three4four5five6six7seven8eight9nine", "112233445566778899"),
-        case("123456789", "123456789"),
-        case("2three5three", "2353"),
-        case("2sevenclone1", "27cl11")
-    )]
-    fn test_preprocess_calibration_digits_ltr(input: &str, expected_output: &str) {
-        assert_eq!(preprocess_calibration_digits_ltr(input), expected_output);
-    }
-
-    #[rstest(
-        input,
-        expected_output,
-        case("two1nine", "219"),
-        case("eightwothree", "eigh23"),
-        case("abcone2threexyz", "abc123xyz"),
-        case("xtwone3four", "xtw134"),
-        case("4nineeightseven2", "49872"),
-        case("zoneight234", "zon8234"),
-        case("7pqrstsixteen", "7pqrst6teen"),
-        case(
-            "cgpqqcbfksnvppdqqsgh7twotzqglbvptmfive",
-            "cgpqqcbfksnvppdqqsgh72tzqglbvptm5"
-        ),
-        case("7fourfourfivevbnlgzgxnpt", "7445vbnlgzgxnpt"),
-        case("jeightwo5", "jeigh25"),
-        case("lmgzcd4sixslonetwo", "lmgzcd46sl12"),
-        case("8682", "8682"),
-        case("2bhzhzpglp", "2bhzhzpglp"),
-        case("onetwothreefourfivesixseveneightnine", "123456789"),
-        case("onetwothreefourfivesixseveneightnine", "123456789"),
-        case("one1two2three3four4five5six6seven7eight8nine9", "112233445566778899"),
-        case("1one2two3three4four5five6six7seven8eight9nine", "112233445566778899"),
-        case("123456789", "123456789"),
-        case("2three5three", "2353"),
-        case("2sevenclone1", "27cl11")
-    )]
-    fn test_preprocess_calibration_digits_rtl(input: &str, expected_output: &str) {
-        assert_eq!(preprocess_calibration_digits_rtl(input), expected_output);
     }
 
     #[rstest(
