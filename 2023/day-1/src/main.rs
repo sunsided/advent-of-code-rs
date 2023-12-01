@@ -25,7 +25,6 @@ lazy_static! {
         map.insert("seven", 7);
         map.insert("eight", 8);
         map.insert("nine", 9);
-        map.insert("zero", 0);
         map
     };
 }
