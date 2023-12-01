@@ -1,4 +1,6 @@
-# [Day 1: Trebuchet?!]
+# Day 1: Trebuchet?!
+
+See the original puzzle description [here].
 
 ## Part One
 
@@ -63,4 +65,4 @@ Adding these together produces `281`.
 
 [weather machine]: https://adventofcode.com/2015/day/1
 [trebuchet]: https://en.wikipedia.org/wiki/Trebuchet
-[Day 1: Trebuchet?!]: https://adventofcode.com/2023/day/1
+[here]: https://adventofcode.com/2023/day/1
