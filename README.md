@@ -1,4 +1,6 @@
-# Advent of Code
+# ✨🎄 Advent of Code 🎄✨
+
+Solutions to [Advent of Code], implemented in Rust.
 
 ## 2023
 
@@ -7,3 +9,5 @@
 ## 2022
 
 - [Day 25: Full of Hot Air](https://github.com/sunsided/snafu-numbers) (external repo)
+
+[Advent of Code]: https://adventofcode.com/
