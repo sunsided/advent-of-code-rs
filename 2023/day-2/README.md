@@ -2,6 +2,10 @@
 
 See the original puzzle description [here].
 
+```shell
+cargo run --example 2023-day-2
+```
+
 ## Part One
 
 You're launched high into the atmosphere! The apex of your trajectory just barely reaches the surface of a large island
