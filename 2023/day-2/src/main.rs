@@ -5,8 +5,16 @@ use std::ops::RangeBounds;
 use std::str::FromStr;
 
 const INPUT: &str = include_str!("../input.txt");
+const GIVEN: Draw = Draw::rgb(12, 13, 14);
 
-fn main() {}
+fn main() {
+    let games = iter_games(INPUT.lines());
+    let sum_of_possible_game_ids: u32 = filter_playable_games(games, &GIVEN)
+        .map(|g| g.expect("found invalid game"))
+        .map(|g| g.game_no)
+        .sum();
+    println!("The sum of all possible game IDs is: {sum_of_possible_game_ids}");
+}
 
 /// A game.
 #[derive(Debug, Eq, PartialEq)]
@@ -28,6 +36,35 @@ struct Draw {
     blue: u32,
 }
 
+impl Game {
+    /// Checks if the given draw is available in the list of draws.
+    ///
+    /// # Arguments
+    ///
+    /// * `given` - A reference to the draw to be checked.
+    ///
+    /// # Returns
+    ///
+    /// * `true` if the given draw is present in the list of draws, `false` otherwise.
+    ///
+    /// # Notes
+    ///
+    /// This function uses the `iter` method to iterate over the list of draws and
+    /// check if any of the draws are greater than or equal to the given draw. It
+    /// returns `true` if at least one draw satisfies this condition, `false` otherwise.
+    pub fn is_possible(&self, given: &Draw) -> bool {
+        self.draws.iter().all(|game| {
+            game.red <= given.red && game.green <= given.green && game.blue <= given.blue
+        })
+    }
+}
+
+impl Draw {
+    pub const fn rgb(red: u32, green: u32, blue: u32) -> Self {
+        Self { red, green, blue }
+    }
+}
+
 impl FromStr for Game {
     type Err = ParseGameError;
 
@@ -37,6 +74,7 @@ impl FromStr for Game {
             return Err(ParseGameError("found non-ASCII characters"));
         }
 
+        let s = s.trim_start();
         if &s[..5] != "Game " {
             return Err(ParseGameError("preamble missing"));
         }
@@ -149,6 +187,42 @@ impl Display for ParseGameError {
 
 impl Error for ParseGameError {}
 
+/// Iterates over a collection of lines and returns an iterator that yields `Result<Game, ParseGameError>`.
+///
+/// # Arguments
+///
+/// * `lines` - An iterator over lines that represents games.
+///
+/// # Returns
+///
+/// An iterator that yields `Result<Game, ParseGameError>`, where `Game` is a struct representing a parsed game
+/// and `ParseGameError` is an error that occurs during game parsing.
+fn iter_games<'a, I: Iterator<Item = &'a str>>(
+    lines: I,
+) -> impl Iterator<Item = Result<Game, ParseGameError>> {
+    lines.map(Game::from_str)
+}
+
+/// Filter playable games from an iterator based on a given draw.
+///
+/// This function takes an iterator of `Result<Game, ParseGameError>` and a reference to a `Draw`,
+/// and returns a new iterator that only contains the games that are playable based on the given draw.
+///
+/// # Arguments
+///
+/// * `games` - An iterator of `Result<Game, ParseGameError>` representing a collection of games.
+/// * `given` - A reference to a `Draw` representing the given draw.
+///
+/// # Returns
+///
+/// An iterator of `Result<Game, ParseGameError>` that only contains playable games.
+fn filter_playable_games<'a, I: Iterator<Item = Result<Game, ParseGameError>> + 'a>(
+    games: I,
+    given: &'a Draw,
+) -> impl Iterator<Item = Result<Game, ParseGameError>> + 'a {
+    games.filter(|game| game.is_err() || game.as_ref().map(|g| g.is_possible(given)) == Ok(true))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -230,10 +304,77 @@ mod tests {
         );
     }
 
+    #[rstest(
+        input,
+        given_red,
+        given_green,
+        given_blue,
+        expected_possibility,
+        case(
+            "Game 1: 3 blue, 4 red; 1 red, 2 green, 6 blue; 2 green",
+            12,
+            13,
+            14,
+            true
+        ),
+        case("Game 2: 1 blue, 2 green; 3 green, 4 blue, 1 red", 12, 13, 14, true),
+        case(
+            "Game 3: 8 green, 6 blue, 20 red; 5 blue, 4 red, 13 green; 5 green, 1 red",
+            12,
+            13,
+            14,
+            false
+        ),
+        case(
+            "Game 4: 1 green, 3 red, 6 blue; 3 green, 6 red; 3 green, 15 blue, 14 red",
+            12,
+            13,
+            14,
+            false
+        ),
+        case(
+            "Game 5: 6 red, 1 blue, 3 green; 2 blue, 1 red, 2 green",
+            12,
+            13,
+            14,
+            true
+        )
+    )]
+    fn test_is_possible(
+        input: &str,
+        given_red: u32,
+        given_green: u32,
+        given_blue: u32,
+        expected_possibility: bool,
+    ) {
+        let result = Game::from_str(input).expect("failed to parse game");
+        let given = Draw::rgb(given_red, given_green, given_blue);
+        assert_eq!(result.is_possible(&given), expected_possibility)
+    }
+
     #[test]
     fn test_find_index() {
         assert_eq!(find_in_range("abcdef", 0.., 'c'), Some(2));
         assert_eq!(find_in_range("abcdef", 2.., 'c'), Some(2));
         assert_eq!(find_in_range("abcdef", 3.., 'c'), None);
+    }
+
+    #[test]
+    fn test_filter_playable() {
+        const EXAMPLE: &str = "Game 1: 3 blue, 4 red; 1 red, 2 green, 6 blue; 2 green
+             Game 2: 1 blue, 2 green; 3 green, 4 blue, 1 red; 1 green, 1 blue
+             Game 3: 8 green, 6 blue, 20 red; 5 blue, 4 red, 13 green; 5 green, 1 red
+             Game 4: 1 green, 3 red, 6 blue; 3 green, 6 red; 3 green, 15 blue, 14 red
+             Game 5: 6 red, 1 blue, 3 green; 2 blue, 1 red, 2 green";
+        const GIVEN: Draw = Draw::rgb(12, 13, 14);
+
+        let games = iter_games(EXAMPLE.lines());
+        let possible_games: Vec<_> = filter_playable_games(games, &GIVEN)
+            .map(|g| g.expect("found invalid game"))
+            .collect();
+        assert_eq!(possible_games.len(), 3);
+        assert!(possible_games.iter().any(|g| g.game_no == 1));
+        assert!(possible_games.iter().any(|g| g.game_no == 2));
+        assert!(possible_games.iter().any(|g| g.game_no == 5));
     }
 }
