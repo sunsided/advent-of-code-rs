@@ -80,7 +80,7 @@ fn sum_calibration_values(input: &str) -> u32 {
 fn sum_calibration_values_lines<'a, I: Iterator<Item = &'a str>>(input: I) -> u32 {
     input
         .filter(|line| !line.is_empty() && !line.chars().all(char::is_whitespace))
-        .fold(0, |sum, line| sum + get_calibration_value(&line))
+        .fold(0, |sum, line| sum + get_calibration_value(line))
 }
 
 /// Extracts the calibration value from a given line.
