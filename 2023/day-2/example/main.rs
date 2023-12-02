@@ -4,6 +4,8 @@ const INPUT: &str = include_str!("../input.txt");
 const GIVEN: SetOfCubes = SetOfCubes::rgb(12, 13, 14);
 
 fn main() {
+    println!("Day 2: Cube Conundrum");
+
     let games: Vec<_> = Game::iter_games(INPUT.lines())
         .map(|g| g.expect("found invalid game"))
         .collect();

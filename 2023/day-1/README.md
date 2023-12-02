@@ -2,6 +2,10 @@
 
 See the original puzzle description [here].
 
+```shell
+cargo run --example 2023-day-1
+```
+
 ## Part One
 
 Something is wrong with global snow production, and you've been selected to take a look.

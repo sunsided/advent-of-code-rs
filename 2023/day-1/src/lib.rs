@@ -1,8 +1,6 @@
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 
-const INPUT: &str = include_str!("../input.txt");
-
 lazy_static! {
     static ref DIGIT_REPLACEMENT: HashMap<&'static str, u32> = {
         let mut map = HashMap::new();
@@ -29,12 +27,6 @@ lazy_static! {
     };
 }
 
-fn main() {
-    println!("Day 1: Trebuchet?!");
-    let sum = sum_calibration_values(INPUT);
-    println!("The sum of all calibration values is {}", sum);
-}
-
 /// Sums the calibration values present in the given input string.
 ///
 /// # Arguments
@@ -44,7 +36,7 @@ fn main() {
 /// # Returns
 ///
 /// The sum of all calibration values present in the input string.
-fn sum_calibration_values(input: &str) -> u32 {
+pub fn sum_calibration_values(input: &str) -> u32 {
     sum_calibration_values_lines(input.lines())
 }
 
@@ -65,6 +57,8 @@ fn sum_calibration_values(input: &str) -> u32 {
 /// # Examples
 ///
 /// ```
+/// use aoc_2023_day_1::sum_calibration_values_lines;
+///
 /// let lines = vec![
 ///     "12",
 ///     "",
@@ -74,10 +68,10 @@ fn sum_calibration_values(input: &str) -> u32 {
 ///     "  78 ",
 /// ];
 ///
-/// let sum = sum_calibration_values_lines(lines.iter());
+/// let sum = sum_calibration_values_lines(lines.into_iter());
 /// assert_eq!(sum, 12 + 34 + 56 + 78);
 /// ```
-fn sum_calibration_values_lines<'a, I: Iterator<Item = &'a str>>(input: I) -> u32 {
+pub fn sum_calibration_values_lines<'a, I: Iterator<Item = &'a str>>(input: I) -> u32 {
     input
         .filter(|line| !line.is_empty() && !line.chars().all(char::is_whitespace))
         .fold(0, |sum, line| sum + get_calibration_value(line))
@@ -110,12 +104,14 @@ fn get_calibration_value(line: &str) -> u32 {
 /// # Example
 ///
 /// ```
+/// use aoc_2023_day_1::get_calibration_digits;
+///
 /// let line = "Calibration digits: one23 34";
 /// let (first, second) = get_calibration_digits(line);
 /// assert_eq!(first, 1);
 /// assert_eq!(second, 4);
 /// ```
-fn get_calibration_digits(line: &str) -> (u32, u32) {
+pub fn get_calibration_digits(line: &str) -> (u32, u32) {
     let first = get_first_calibration_digit(line);
     let last = get_second_calibration_digit(line);
     (first, last)
@@ -139,11 +135,13 @@ fn get_calibration_digits(line: &str) -> (u32, u32) {
 /// # Examples
 ///
 /// ```rust
+/// use aoc_2023_day_1::get_first_calibration_digit;
+///
 /// let line = "one 2 3 four";
 /// let result = get_first_calibration_digit(line);
 /// assert_eq!(result, 1);
 /// ```
-fn get_first_calibration_digit(line: &str) -> u32 {
+pub fn get_first_calibration_digit(line: &str) -> u32 {
     let mut start = 0;
     while start < line.len() {
         for (&needle, &replacement) in DIGIT_REPLACEMENT.iter() {
@@ -170,11 +168,13 @@ fn get_first_calibration_digit(line: &str) -> u32 {
 /// # Examples
 ///
 /// ```
+/// use aoc_2023_day_1::get_second_calibration_digit;
+///
 /// let line = "one 2 3 four";
 /// let digit = get_second_calibration_digit(line);
-/// assert_eq!(result, 4);
+/// assert_eq!(digit, 4);
 /// ```
-fn get_second_calibration_digit(line: &str) -> u32 {
+pub fn get_second_calibration_digit(line: &str) -> u32 {
     let mut end = line.len();
     while end > 0 {
         for (&needle, &replacement) in DIGIT_REPLACEMENT.iter() {
@@ -278,6 +278,7 @@ mod tests {
 
     #[test]
     fn test_sum_calibration_values_on_input() {
+        const INPUT: &str = include_str!("../input.txt");
         let sum = (get_calibration_value("7")
             * (get_calibration_value("threefivefour") - get_calibration_value("threeightwone")))
             * (get_calibration_value("2456765432")
