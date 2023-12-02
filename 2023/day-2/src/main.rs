@@ -2,7 +2,7 @@ use std::borrow::Borrow;
 use std::collections::Bound;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use std::ops::RangeBounds;
+use std::ops::{Add, AddAssign, RangeBounds};
 use std::str::FromStr;
 
 const INPUT: &str = include_str!("../input.txt");
@@ -12,6 +12,7 @@ fn main() {
     let games: Vec<_> = iter_games(INPUT.lines())
         .map(|g| g.expect("found invalid game"))
         .collect();
+
     let sum_of_possible_game_ids: u32 = filter_playable_games(games.iter(), &GIVEN)
         .map(|g| g.game_no)
         .sum();
@@ -104,6 +105,76 @@ impl Game {
                 )
             })
     }
+
+    /// Parses a list of cube draw sets, e.g. `4 blue, 3 red; 1 red, 8 green` into a vector of
+    /// [`SetOfCubes`] of these colors. Used by the [`FromStr`] implementation of [`Game`].
+    ///
+    /// # Arguments
+    /// * `draw_section` - The string slice that contains only the color definition.
+    ///
+    /// # Returns
+    /// A [`Vec<SetOfCubes>`] or a [`ParseGameError`] if the set definition was invalid.
+    fn parse_game_cube_draws(
+        s: &str,
+        game_separator: usize,
+    ) -> Result<Vec<SetOfCubes>, ParseGameError> {
+        let mut draws = Vec::new();
+        let mut section_begin = game_separator + 1;
+        while section_begin < s.len() {
+            let section_end = find_in_range(s, section_begin.., ';').unwrap_or(s.len());
+            let draw_section = s[section_begin..section_end].trim();
+            let draw = Self::parse_cube_set_draw(draw_section)?;
+
+            draws.push(draw);
+            section_begin = section_end + 1;
+        }
+        Ok(draws)
+    }
+
+    /// Parses a set of drawn cubes, e.g. `4 blue, 3 red` into a [`SetOfCubes`] containing
+    /// these colors. Used by [`parse_game_cube_draws`].
+    ///
+    /// # Arguments
+    /// * `draw_section` - The string slice that contains only the color definition.
+    ///
+    /// # Returns
+    /// A [`SetOfCubes`] or a [`ParseGameError`] if the draw definition was invalid.
+    fn parse_cube_set_draw(draw_section: &str) -> Result<SetOfCubes, ParseGameError> {
+        let mut draw = SetOfCubes::default();
+        let mut color_begin = 0;
+        while color_begin < draw_section.len() {
+            let color_end =
+                find_in_range(draw_section, color_begin.., ',').unwrap_or(draw_section.len());
+            let color_section = draw_section[color_begin..color_end].trim();
+            draw += Self::parse_color_section(color_section)?;
+            color_begin = color_end + 1;
+        }
+        Ok(draw)
+    }
+
+    /// Parses a color section, e.g. `3 red` into a [`SetOfCubes`] containing only
+    /// that color. Used by [`parse_cube_set_draw`].
+    ///
+    /// # Arguments
+    /// * `color_section` - The string slice that contains only the color definition.
+    ///
+    /// # Returns
+    /// A [`SetOfCubes`] or a [`ParseGameError`] if the color definition was invalid.
+    fn parse_color_section(color_section: &str) -> Result<SetOfCubes, ParseGameError> {
+        let count_end = find_in_range(color_section, 0.., ' ')
+            .ok_or(ParseGameError("invalid draw definition"))?;
+        let num_cubes_drawn: u32 = color_section[..count_end]
+            .parse()
+            .map_err(|_e| ParseGameError("invalid draw count definition"))?;
+
+        let color = match &color_section[(count_end + 1)..] {
+            "red" => SetOfCubes::rgb(num_cubes_drawn, 0, 0),
+            "green" => SetOfCubes::rgb(0, num_cubes_drawn, 0),
+            "blue" => SetOfCubes::rgb(0, 0, num_cubes_drawn),
+            _ => return Err(ParseGameError("Invalid color name")),
+        };
+        Ok(color)
+    }
 }
 
 impl SetOfCubes {
@@ -111,6 +182,7 @@ impl SetOfCubes {
         Self { red, green, blue }
     }
 
+    /// Calculates the power of this set, i.e. the product of all cube colors.
     pub const fn power(&self) -> u32 {
         self.red * self.green * self.blue
     }
@@ -136,45 +208,7 @@ impl FromStr for Game {
             .parse()
             .map_err(|_e| ParseGameError("invalid game number"))?;
 
-        // Parse the game draws.
-        let mut draws = Vec::new();
-        let mut section_begin = game_separator + 1;
-        while section_begin < s.len() {
-            let section_end = find_in_range(s, section_begin.., ';').unwrap_or(s.len());
-            let draw_section = s[section_begin..section_end].trim();
-
-            let mut draw = SetOfCubes {
-                red: 0,
-                green: 0,
-                blue: 0,
-            };
-
-            // Parse all color counts.
-            let mut color_begin = 0;
-            while color_begin < draw_section.len() {
-                let color_end =
-                    find_in_range(draw_section, color_begin.., ',').unwrap_or(draw_section.len());
-                let color_section = draw_section[color_begin..color_end].trim();
-
-                let count_end = find_in_range(color_section, 0.., ' ')
-                    .ok_or(ParseGameError("invalid draw definition"))?;
-                let num_cubes_drawn: u32 = color_section[..count_end]
-                    .parse()
-                    .map_err(|_e| ParseGameError("invalid draw count definition"))?;
-
-                match &color_section[(count_end + 1)..] {
-                    "red" => draw.red += num_cubes_drawn,
-                    "green" => draw.green += num_cubes_drawn,
-                    "blue" => draw.blue += num_cubes_drawn,
-                    _ => return Err(ParseGameError("Invalid color name")),
-                }
-
-                color_begin = color_end + 1;
-            }
-
-            draws.push(draw);
-            section_begin = section_end + 1;
-        }
+        let draws = Self::parse_game_cube_draws(s, game_separator)?;
 
         Ok(Self { game_no, draws })
     }
@@ -273,6 +307,26 @@ where
     G: Borrow<Game>,
 {
     games.filter(|game| game.borrow().is_possible(given))
+}
+
+impl Add for SetOfCubes {
+    type Output = SetOfCubes;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        SetOfCubes::rgb(
+            self.red + rhs.red,
+            self.green + rhs.green,
+            self.blue + rhs.blue,
+        )
+    }
+}
+
+impl AddAssign for SetOfCubes {
+    fn add_assign(&mut self, rhs: Self) {
+        self.red += rhs.red;
+        self.green += rhs.green;
+        self.blue += rhs.blue;
+    }
 }
 
 #[cfg(test)]
