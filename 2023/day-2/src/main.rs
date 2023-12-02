@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::collections::Bound;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
@@ -5,15 +6,23 @@ use std::ops::RangeBounds;
 use std::str::FromStr;
 
 const INPUT: &str = include_str!("../input.txt");
-const GIVEN: Draw = Draw::rgb(12, 13, 14);
+const GIVEN: SetOfCubes = SetOfCubes::rgb(12, 13, 14);
 
 fn main() {
-    let games = iter_games(INPUT.lines());
-    let sum_of_possible_game_ids: u32 = filter_playable_games(games, &GIVEN)
+    let games: Vec<_> = iter_games(INPUT.lines())
         .map(|g| g.expect("found invalid game"))
+        .collect();
+    let sum_of_possible_game_ids: u32 = filter_playable_games(games.iter(), &GIVEN)
         .map(|g| g.game_no)
         .sum();
     println!("The sum of all possible game IDs is: {sum_of_possible_game_ids}");
+
+    let power_of_smallest: u32 = games
+        .iter()
+        .map(|g| g.smallest_set_needed())
+        .map(|g| g.power())
+        .sum();
+    println!("The total power of all smallest sets is: {power_of_smallest}");
 }
 
 /// A game.
@@ -22,12 +31,12 @@ struct Game {
     /// The number of the game.
     game_no: u32,
     /// The sets of cubes drawn from the bag.
-    draws: Vec<Draw>,
+    draws: Vec<SetOfCubes>,
 }
 
 /// A number of colored cubes drawn from the bag.
 #[derive(Debug, Eq, PartialEq, Default)]
-struct Draw {
+struct SetOfCubes {
     /// The number of red cubes drawn.
     red: u32,
     /// The number of green cubes drawn.
@@ -37,7 +46,7 @@ struct Draw {
 }
 
 impl Game {
-    /// Checks if the given draw is available in the list of draws.
+    /// Checks if the given draw is available in the list of cube sets.
     ///
     /// # Arguments
     ///
@@ -52,16 +61,58 @@ impl Game {
     /// This function uses the `iter` method to iterate over the list of draws and
     /// check if any of the draws are greater than or equal to the given draw. It
     /// returns `true` if at least one draw satisfies this condition, `false` otherwise.
-    pub fn is_possible(&self, given: &Draw) -> bool {
+    pub fn is_possible(&self, given: &SetOfCubes) -> bool {
         self.draws.iter().all(|game| {
             game.red <= given.red && game.green <= given.green && game.blue <= given.blue
         })
     }
+
+    /// Returns the smallest `SetOfCubes` needed based on the `draws` contained in the current object.
+    ///
+    /// The `draws` are iterated over and a fold operation is performed to find the smallest `SetOfCubes`.
+    /// The `SetOfCubes` returned will have the maximum values for `red`, `green`, and `blue` from all the `draws`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use crate::SetOfCubes;
+    ///
+    /// let game = Game {
+    ///     game_no: 0,
+    ///     draws: vec![
+    ///         SetOfCubes::rgb(1, 2, 9),
+    ///         SetOfCubes::rgb(4, 8, 6),
+    ///         SetOfCubes::rgb(7, 5, 3),
+    ///     ],
+    /// };
+    ///
+    /// let smallest_set = game.smallest_set_needed();
+    /// assert_eq!(smallest_set, SetOfCubes::rgb(7, 8, 9));
+    /// ```
+    ///
+    /// # Returns
+    ///
+    /// The smallest `SetOfCubes` needed based on the `draws` contained in the current object.
+    pub fn smallest_set_needed(&self) -> SetOfCubes {
+        self.draws
+            .iter()
+            .fold(SetOfCubes::default(), |smallest, set| {
+                SetOfCubes::rgb(
+                    smallest.red.max(set.red),
+                    smallest.green.max(set.green),
+                    smallest.blue.max(set.blue),
+                )
+            })
+    }
 }
 
-impl Draw {
+impl SetOfCubes {
     pub const fn rgb(red: u32, green: u32, blue: u32) -> Self {
         Self { red, green, blue }
+    }
+
+    pub const fn power(&self) -> u32 {
+        self.red * self.green * self.blue
     }
 }
 
@@ -92,7 +143,7 @@ impl FromStr for Game {
             let section_end = find_in_range(s, section_begin.., ';').unwrap_or(s.len());
             let draw_section = s[section_begin..section_end].trim();
 
-            let mut draw = Draw {
+            let mut draw = SetOfCubes {
                 red: 0,
                 green: 0,
                 blue: 0,
@@ -216,11 +267,12 @@ fn iter_games<'a, I: Iterator<Item = &'a str>>(
 /// # Returns
 ///
 /// An iterator of `Result<Game, ParseGameError>` that only contains playable games.
-fn filter_playable_games<'a, I: Iterator<Item = Result<Game, ParseGameError>> + 'a>(
-    games: I,
-    given: &'a Draw,
-) -> impl Iterator<Item = Result<Game, ParseGameError>> + 'a {
-    games.filter(|game| game.is_err() || game.as_ref().map(|g| g.is_possible(given)) == Ok(true))
+fn filter_playable_games<'a, I, G>(games: I, given: &'a SetOfCubes) -> impl Iterator<Item = G> + 'a
+where
+    I: Iterator<Item = G> + 'a,
+    G: Borrow<Game>,
+{
+    games.filter(|game| game.borrow().is_possible(given))
 }
 
 #[cfg(test)]
@@ -279,11 +331,14 @@ mod tests {
             game.draws.len()
         );
 
-        let sum = game.draws.iter().fold(Draw::default(), |sum, item| Draw {
-            red: sum.red + item.red,
-            green: sum.green + item.green,
-            blue: sum.blue + item.blue,
-        });
+        let sum = game
+            .draws
+            .iter()
+            .fold(SetOfCubes::default(), |sum, item| SetOfCubes {
+                red: sum.red + item.red,
+                green: sum.green + item.green,
+                blue: sum.blue + item.blue,
+            });
 
         assert_eq!(
             sum.red, total_red,
@@ -348,7 +403,7 @@ mod tests {
         expected_possibility: bool,
     ) {
         let result = Game::from_str(input).expect("failed to parse game");
-        let given = Draw::rgb(given_red, given_green, given_blue);
+        let given = SetOfCubes::rgb(given_red, given_green, given_blue);
         assert_eq!(result.is_possible(&given), expected_possibility)
     }
 
@@ -366,15 +421,47 @@ mod tests {
              Game 3: 8 green, 6 blue, 20 red; 5 blue, 4 red, 13 green; 5 green, 1 red
              Game 4: 1 green, 3 red, 6 blue; 3 green, 6 red; 3 green, 15 blue, 14 red
              Game 5: 6 red, 1 blue, 3 green; 2 blue, 1 red, 2 green";
-        const GIVEN: Draw = Draw::rgb(12, 13, 14);
+        const GIVEN: SetOfCubes = SetOfCubes::rgb(12, 13, 14);
 
-        let games = iter_games(EXAMPLE.lines());
-        let possible_games: Vec<_> = filter_playable_games(games, &GIVEN)
-            .map(|g| g.expect("found invalid game"))
-            .collect();
+        let games = iter_games(EXAMPLE.lines()).map(|g| g.expect("found invalid game"));
+        let possible_games: Vec<_> = filter_playable_games(games, &GIVEN).collect();
         assert_eq!(possible_games.len(), 3);
         assert!(possible_games.iter().any(|g| g.game_no == 1));
         assert!(possible_games.iter().any(|g| g.game_no == 2));
         assert!(possible_games.iter().any(|g| g.game_no == 5));
+    }
+
+    #[test]
+    fn test_smallest_needed() {
+        let game = Game {
+            game_no: 0,
+            draws: vec![
+                SetOfCubes::rgb(1, 2, 9),
+                SetOfCubes::rgb(4, 8, 6),
+                SetOfCubes::rgb(7, 5, 3),
+            ],
+        };
+
+        let smallest_set = game.smallest_set_needed();
+        assert_eq!(smallest_set, SetOfCubes::rgb(7, 8, 9));
+        assert_eq!(smallest_set.power(), 7 * 8 * 9);
+    }
+
+    #[test]
+    fn test_power_of_smallest() {
+        const EXAMPLE: &str = "Game 1: 3 blue, 4 red; 1 red, 2 green, 6 blue; 2 green
+             Game 2: 1 blue, 2 green; 3 green, 4 blue, 1 red; 1 green, 1 blue
+             Game 3: 8 green, 6 blue, 20 red; 5 blue, 4 red, 13 green; 5 green, 1 red
+             Game 4: 1 green, 3 red, 6 blue; 3 green, 6 red; 3 green, 15 blue, 14 red
+             Game 5: 6 red, 1 blue, 3 green; 2 blue, 1 red, 2 green";
+        const GIVEN: SetOfCubes = SetOfCubes::rgb(12, 13, 14);
+
+        let games = iter_games(EXAMPLE.lines());
+        let power_of_smallest: u32 = games
+            .map(|g| g.expect("found invalid game"))
+            .map(|g| g.smallest_set_needed())
+            .map(|g| g.power())
+            .sum();
+        assert_eq!(power_of_smallest, 2286);
     }
 }
