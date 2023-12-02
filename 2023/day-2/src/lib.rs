@@ -5,30 +5,9 @@ use std::fmt::{Display, Formatter};
 use std::ops::{Add, AddAssign, RangeBounds};
 use std::str::FromStr;
 
-const INPUT: &str = include_str!("../input.txt");
-const GIVEN: SetOfCubes = SetOfCubes::rgb(12, 13, 14);
-
-fn main() {
-    let games: Vec<_> = iter_games(INPUT.lines())
-        .map(|g| g.expect("found invalid game"))
-        .collect();
-
-    let sum_of_possible_game_ids: u32 = filter_playable_games(games.iter(), &GIVEN)
-        .map(|g| g.game_no)
-        .sum();
-    println!("The sum of all possible game IDs is: {sum_of_possible_game_ids}");
-
-    let power_of_smallest: u32 = games
-        .iter()
-        .map(|g| g.smallest_set_needed())
-        .map(|g| g.power())
-        .sum();
-    println!("The total power of all smallest sets is: {power_of_smallest}");
-}
-
 /// A game.
 #[derive(Debug, Eq, PartialEq)]
-struct Game {
+pub struct Game {
     /// The number of the game.
     game_no: u32,
     /// The sets of cubes drawn from the bag.
@@ -37,7 +16,7 @@ struct Game {
 
 /// A number of colored cubes drawn from the bag.
 #[derive(Debug, Eq, PartialEq, Default)]
-struct SetOfCubes {
+pub struct SetOfCubes {
     /// The number of red cubes drawn.
     red: u32,
     /// The number of green cubes drawn.
@@ -47,6 +26,56 @@ struct SetOfCubes {
 }
 
 impl Game {
+    /// Iterates over a collection of lines and returns an iterator that yields `Result<Game, ParseGameError>`.
+    ///
+    /// # Arguments
+    ///
+    /// * `lines` - An iterator over lines that represents games.
+    ///
+    /// # Returns
+    ///
+    /// An iterator that yields `Result<Game, ParseGameError>`, where `Game` is a struct representing a parsed game
+    /// and `ParseGameError` is an error that occurs during game parsing.
+    pub fn iter_games<'a, I: Iterator<Item = &'a str>>(
+        lines: I,
+    ) -> impl Iterator<Item = Result<Game, ParseGameError>> {
+        lines.map(Game::from_str)
+    }
+
+    /// Filter playable games from an iterator based on a given draw.
+    ///
+    /// This function takes an iterator of `Result<Game, ParseGameError>` and a reference to a `Draw`,
+    /// and returns a new iterator that only contains the games that are playable based on the given draw.
+    ///
+    /// # Arguments
+    ///
+    /// * `games` - An iterator of `Result<Game, ParseGameError>` representing a collection of games.
+    /// * `given` - A reference to a `Draw` representing the given draw.
+    ///
+    /// # Returns
+    ///
+    /// An iterator of `Result<Game, ParseGameError>` that only contains playable games.
+    pub fn filter_playable_games<'a, I, G>(
+        games: I,
+        given: &'a SetOfCubes,
+    ) -> impl Iterator<Item = G> + 'a
+    where
+        I: Iterator<Item = G> + 'a,
+        G: Borrow<Game>,
+    {
+        games.filter(|game| game.borrow().is_possible(given))
+    }
+
+    /// Creates a new [`Game`] instance.
+    pub const fn new(game_no: u32, draws: Vec<SetOfCubes>) -> Self {
+        Self { game_no, draws }
+    }
+
+    /// Gets the number of the game.
+    pub fn game_number(&self) -> u32 {
+        self.game_no
+    }
+
     /// Checks if the given draw is available in the list of cube sets.
     ///
     /// # Arguments
@@ -76,16 +105,14 @@ impl Game {
     /// # Example
     ///
     /// ```
-    /// use crate::SetOfCubes;
+    /// use aoc_2023_day_2::Game;
+    /// use aoc_2023_day_2::SetOfCubes;
     ///
-    /// let game = Game {
-    ///     game_no: 0,
-    ///     draws: vec![
-    ///         SetOfCubes::rgb(1, 2, 9),
-    ///         SetOfCubes::rgb(4, 8, 6),
-    ///         SetOfCubes::rgb(7, 5, 3),
-    ///     ],
-    /// };
+    /// let game = Game::new(0, vec![
+    ///     SetOfCubes::rgb(1, 2, 9),
+    ///     SetOfCubes::rgb(4, 8, 6),
+    ///     SetOfCubes::rgb(7, 5, 3),
+    /// ]);
     ///
     /// let smallest_set = game.smallest_set_needed();
     /// assert_eq!(smallest_set, SetOfCubes::rgb(7, 8, 9));
@@ -232,15 +259,16 @@ impl FromStr for Game {
 ///
 /// ```
 /// use std::ops::Bound;
+/// use aoc_2023_day_2::find_in_range;
 ///
 /// let input = "Hello, world!";
 /// let search_range = 0..5; // Search only in the first 5 characters
 /// let pattern = 'o';
 ///
-/// let result = find_index(input, search_range, pattern);
+/// let result = find_in_range(input, search_range, pattern);
 /// assert_eq!(result, Some(4));
 /// ```
-fn find_in_range<R: RangeBounds<usize>>(
+pub fn find_in_range<R: RangeBounds<usize>>(
     input: &str,
     search_range: R,
     pattern: char,
@@ -262,7 +290,7 @@ fn find_in_range<R: RangeBounds<usize>>(
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-struct ParseGameError(&'static str);
+pub struct ParseGameError(&'static str);
 
 impl Display for ParseGameError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -271,43 +299,6 @@ impl Display for ParseGameError {
 }
 
 impl Error for ParseGameError {}
-
-/// Iterates over a collection of lines and returns an iterator that yields `Result<Game, ParseGameError>`.
-///
-/// # Arguments
-///
-/// * `lines` - An iterator over lines that represents games.
-///
-/// # Returns
-///
-/// An iterator that yields `Result<Game, ParseGameError>`, where `Game` is a struct representing a parsed game
-/// and `ParseGameError` is an error that occurs during game parsing.
-fn iter_games<'a, I: Iterator<Item = &'a str>>(
-    lines: I,
-) -> impl Iterator<Item = Result<Game, ParseGameError>> {
-    lines.map(Game::from_str)
-}
-
-/// Filter playable games from an iterator based on a given draw.
-///
-/// This function takes an iterator of `Result<Game, ParseGameError>` and a reference to a `Draw`,
-/// and returns a new iterator that only contains the games that are playable based on the given draw.
-///
-/// # Arguments
-///
-/// * `games` - An iterator of `Result<Game, ParseGameError>` representing a collection of games.
-/// * `given` - A reference to a `Draw` representing the given draw.
-///
-/// # Returns
-///
-/// An iterator of `Result<Game, ParseGameError>` that only contains playable games.
-fn filter_playable_games<'a, I, G>(games: I, given: &'a SetOfCubes) -> impl Iterator<Item = G> + 'a
-where
-    I: Iterator<Item = G> + 'a,
-    G: Borrow<Game>,
-{
-    games.filter(|game| game.borrow().is_possible(given))
-}
 
 impl Add for SetOfCubes {
     type Output = SetOfCubes;
@@ -477,8 +468,8 @@ mod tests {
              Game 5: 6 red, 1 blue, 3 green; 2 blue, 1 red, 2 green";
         const GIVEN: SetOfCubes = SetOfCubes::rgb(12, 13, 14);
 
-        let games = iter_games(EXAMPLE.lines()).map(|g| g.expect("found invalid game"));
-        let possible_games: Vec<_> = filter_playable_games(games, &GIVEN).collect();
+        let games = Game::iter_games(EXAMPLE.lines()).map(|g| g.expect("found invalid game"));
+        let possible_games: Vec<_> = Game::filter_playable_games(games, &GIVEN).collect();
         assert_eq!(possible_games.len(), 3);
         assert!(possible_games.iter().any(|g| g.game_no == 1));
         assert!(possible_games.iter().any(|g| g.game_no == 2));
@@ -510,7 +501,7 @@ mod tests {
              Game 5: 6 red, 1 blue, 3 green; 2 blue, 1 red, 2 green";
         const GIVEN: SetOfCubes = SetOfCubes::rgb(12, 13, 14);
 
-        let games = iter_games(EXAMPLE.lines());
+        let games = Game::iter_games(EXAMPLE.lines());
         let power_of_smallest: u32 = games
             .map(|g| g.expect("found invalid game"))
             .map(|g| g.smallest_set_needed())
