@@ -13,6 +13,8 @@ pub struct Schematic {
     valid: Vec<PartNumber>,
     /// A vector of `PartNumber` instances representing the invalid part numbers.
     invalid: Vec<PartNumber>,
+    /// The symbol map, used for gear detection.
+    symbol_map: SymbolMap,
 }
 
 /// Represents a part number
@@ -22,23 +24,37 @@ struct PartNumber {
     row: usize,
     pos: usize,
     len: usize,
-    value: u32,
+    number: u32,
 }
 
 /// `SymbolMap` is a struct that represents a grid of symbols, where each symbol can be either true or false.
 /// It is used to keep track of the state of symbols in a grid, such as the state of pixels in an image.
 #[derive(Debug, Clone)]
 struct SymbolMap {
+    /// The number of lines.
     num_lines: usize,
+    /// The length of each line.
     line_length: usize,
+    /// The map of symbols.
     map: Vec<SymbolType>,
+    /// The set of potential gear symbols.
+    potential_gears: Vec<SymbolPosition>,
 }
 
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
 enum SymbolType {
+    /// Not a symbol.
     None,
+    /// An arbitrary symbol.
     Generic,
-    Gear,
+    /// A potential gear. To be a proper gear, this symbol must be next to two part numbers.
+    GearCandidate,
+}
+
+#[derive(Debug, Clone)]
+struct SymbolPosition {
+    x: usize,
+    y: usize,
 }
 
 impl SymbolType {
@@ -47,94 +63,17 @@ impl SymbolType {
         match self {
             SymbolType::None => false,
             SymbolType::Generic => true,
-            SymbolType::Gear => true,
+            SymbolType::GearCandidate => true,
         }
     }
 
     /// Determines if the current value represents a gear.
-    fn is_gear(&self) -> bool {
+    fn is_potential_gear(&self) -> bool {
         match self {
             SymbolType::None => false,
             SymbolType::Generic => false,
-            SymbolType::Gear => true,
+            SymbolType::GearCandidate => true,
         }
-    }
-}
-
-impl From<char> for SymbolType {
-    fn from(value: char) -> Self {
-        if value == '*' {
-            Self::Gear
-        } else if !value.is_ascii_digit() && value != '.' {
-            Self::Generic
-        } else {
-            Self::None
-        }
-    }
-}
-
-impl FromStr for Schematic {
-    type Err = ParseSchematicError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let symbol_map = SymbolMap::from_str(s)?;
-        let line_len = symbol_map.line_length;
-
-        let mut valid = Vec::new();
-        let mut invalid = Vec::new();
-
-        // We trim whitespace to make test input easier.
-        'line: for (line_no, line) in s.lines().map(|l| l.trim()).enumerate() {
-            if line.is_empty() {
-                continue;
-            }
-
-            let mut start_pos = 0;
-            while start_pos < line_len {
-                // Find the position of the first digit in the line or skip to the next line.
-                let first_digit = start_pos
-                    + match line[start_pos..].bytes().position(|c| c.is_ascii_digit()) {
-                        None => continue 'line,
-                        Some(digit) => digit,
-                    };
-
-                // Find the position of the first non-digit after the specified position; if none
-                // is found, return the line length.
-                let first_non_digit = first_digit
-                    + line[first_digit..]
-                        .bytes()
-                        .position(|c| !c.is_ascii_digit())
-                        .unwrap_or(line.len() - first_digit);
-
-                // Register start position for the next number.
-                start_pos = first_non_digit;
-
-                // Extract region containing numbers.
-                debug_assert!(first_non_digit <= line_len);
-                let digit = &line[first_digit..first_non_digit];
-
-                // Test if we are surrounded by a symbol.
-                let range = (first_digit as isize - 1)..=(first_non_digit as isize);
-                let next_to_symbol = symbol_map.is_next_to_symbol(range, line_no as _);
-
-                let part = PartNumber {
-                    row: line_no,
-                    pos: first_digit,
-                    len: digit.len(),
-                    value: u32::from_str(digit).map_err(|_| {
-                        ParseSchematicError::Line(line_no, "Failed to parse part number")
-                    })?,
-                };
-
-                if next_to_symbol {
-                    valid.push(part);
-                } else {
-                    invalid.push(part);
-                }
-            }
-        }
-
-        Ok(Self { valid, invalid })
     }
 }
 
@@ -146,11 +85,56 @@ impl Schematic {
 
     /// Returns the sum of the values in the valid parts.
     pub fn sum_valid_parts(&self) -> u32 {
-        self.valid.iter().fold(0, |sum, part| sum + part.value)
+        self.valid.iter().fold(0, |sum, part| sum + part.number)
+    }
+
+    /// Sums up all the gear ratios.
+    pub fn sum_gear_ratios(&self) -> u32 {
+        let mut sum = 0;
+        for potential_gear in self.symbol_map.potential_gears() {
+            // Find all adjacent numbers. This is beautifully shitty as it goes through all numbers.
+            let values: Vec<_> = self
+                .valid
+                .iter()
+                .filter(|part| part.is_adjacent(potential_gear))
+                .map(|part| part.number)
+                .collect();
+
+            // "A gear is any * symbol that is adjacent to exactly two part numbers."
+            debug_assert!(values.len() <= 2);
+            if values.len() != 2 {
+                continue;
+            }
+
+            let gear_ratio: u32 = values.iter().product();
+            sum += gear_ratio;
+        }
+
+        sum
+    }
+}
+
+impl PartNumber {
+    pub fn is_adjacent<P: Borrow<SymbolPosition>>(&self, position: P) -> bool {
+        let position = position.borrow();
+        let x = position.x as isize;
+        let y = position.y as isize;
+
+        let range_top = self.row as isize - 1;
+        let range_bottom = self.row as isize + 1;
+
+        let range_left = self.pos as isize - 1;
+        let range_right = self.pos as isize + self.len as isize;
+
+        x >= range_left && x <= range_right && y >= range_top && y <= range_bottom
     }
 }
 
 impl SymbolMap {
+    pub fn potential_gears(&self) -> std::slice::Iter<SymbolPosition> {
+        self.potential_gears.iter()
+    }
+
     /// Checks if the specified address represents a symbol in the map.
     ///
     /// # Arguments
@@ -236,6 +220,87 @@ impl SymbolMap {
     }
 }
 
+impl From<char> for SymbolType {
+    fn from(value: char) -> Self {
+        if value == '*' {
+            Self::GearCandidate
+        } else if !value.is_ascii_digit() && value != '.' {
+            Self::Generic
+        } else {
+            Self::None
+        }
+    }
+}
+
+impl FromStr for Schematic {
+    type Err = ParseSchematicError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let symbol_map = SymbolMap::from_str(s)?;
+        let line_len = symbol_map.line_length;
+
+        let mut valid = Vec::new();
+        let mut invalid = Vec::new();
+
+        // We trim whitespace to make test input easier.
+        'line: for (line_no, line) in s.lines().map(|l| l.trim()).enumerate() {
+            if line.is_empty() {
+                continue;
+            }
+
+            let mut start_pos = 0;
+            while start_pos < line_len {
+                // Find the position of the first digit in the line or skip to the next line.
+                let first_digit = start_pos
+                    + match line[start_pos..].bytes().position(|c| c.is_ascii_digit()) {
+                        None => continue 'line,
+                        Some(digit) => digit,
+                    };
+
+                // Find the position of the first non-digit after the specified position; if none
+                // is found, return the line length.
+                let first_non_digit = first_digit
+                    + line[first_digit..]
+                        .bytes()
+                        .position(|c| !c.is_ascii_digit())
+                        .unwrap_or(line.len() - first_digit);
+
+                // Register start position for the next number.
+                start_pos = first_non_digit;
+
+                // Extract region containing numbers.
+                debug_assert!(first_non_digit <= line_len);
+                let digit = &line[first_digit..first_non_digit];
+
+                // Test if we are surrounded by a symbol.
+                let range = (first_digit as isize - 1)..=(first_non_digit as isize);
+                let next_to_symbol = symbol_map.is_next_to_symbol(range, line_no as _);
+
+                let part = PartNumber {
+                    row: line_no,
+                    pos: first_digit,
+                    len: digit.len(),
+                    number: u32::from_str(digit).map_err(|_| {
+                        ParseSchematicError::Line(line_no, "Failed to parse part number")
+                    })?,
+                };
+
+                if next_to_symbol {
+                    valid.push(part);
+                } else {
+                    invalid.push(part);
+                }
+            }
+        }
+
+        Ok(Self {
+            valid,
+            invalid,
+            symbol_map,
+        })
+    }
+}
+
 impl FromStr for SymbolMap {
     type Err = ParseSchematicError;
 
@@ -256,6 +321,7 @@ impl FromStr for SymbolMap {
         // as we do not need to keep the space for the newline characters. It is, however,
         // a safe upper bound that's not excessively large.
         let mut map = Vec::with_capacity(s.len());
+        let mut potential_gears = Vec::new();
 
         let mut num_lines = 0;
         for (line_no, line) in lines.enumerate() {
@@ -266,8 +332,18 @@ impl FromStr for SymbolMap {
 
             // Convert every character into a boolean. true implies the character was a symbol,
             // false implies it was not. Dots do not count as a character as per the problem description.
-            let symbol_detection = line.chars().map(SymbolType::from);
+            let symbol_detection = Vec::from_iter(line.chars().map(SymbolType::from));
 
+            // Register all potential gear positions.
+            potential_gears.extend(
+                symbol_detection
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, &sym)| sym.is_potential_gear())
+                    .map(|(x, _)| SymbolPosition { x, y: line_no }),
+            );
+
+            // Register all symbols.
             map.extend(symbol_detection);
         }
 
@@ -276,6 +352,7 @@ impl FromStr for SymbolMap {
             num_lines,
             line_length,
             map,
+            potential_gears,
         })
     }
 }
@@ -341,23 +418,57 @@ mod tests {
             9,
             "More valid numbers found than expected"
         );
-        assert!(schematic.valid.iter().any(|p| p.value == 467));
-        assert!(schematic.valid.iter().any(|p| p.value == 35));
-        assert!(schematic.valid.iter().any(|p| p.value == 633));
-        assert!(schematic.valid.iter().any(|p| p.value == 617));
-        assert!(schematic.valid.iter().any(|p| p.value == 592));
-        assert!(schematic.valid.iter().any(|p| p.value == 755));
-        assert!(schematic.valid.iter().any(|p| p.value == 664));
-        assert!(schematic.valid.iter().any(|p| p.value == 598));
-        assert!(schematic.valid.iter().any(|p| p.value == 997));
+        assert!(schematic.valid.iter().any(|p| p.number == 467));
+        assert!(schematic.valid.iter().any(|p| p.number == 35));
+        assert!(schematic.valid.iter().any(|p| p.number == 633));
+        assert!(schematic.valid.iter().any(|p| p.number == 617));
+        assert!(schematic.valid.iter().any(|p| p.number == 592));
+        assert!(schematic.valid.iter().any(|p| p.number == 755));
+        assert!(schematic.valid.iter().any(|p| p.number == 664));
+        assert!(schematic.valid.iter().any(|p| p.number == 598));
+        assert!(schematic.valid.iter().any(|p| p.number == 997));
 
         assert_eq!(
             schematic.invalid.len(),
             2,
             "More invalid numbers found than expected"
         );
-        assert!(schematic.invalid.iter().any(|p| p.value == 114));
-        assert!(schematic.invalid.iter().any(|p| p.value == 58));
+        assert!(schematic.invalid.iter().any(|p| p.number == 114));
+        assert!(schematic.invalid.iter().any(|p| p.number == 58));
+    }
+
+    #[test]
+    fn test_sum_valid_parts() {
+        const EXAMPLE: &str = "467..114..
+                               ...*......
+                               ..35..633.
+                               ......#...
+                               617*......
+                               .....+.58.
+                               ..592.....
+                               ......755.
+                               ...$.*....
+                               .664.598..
+                               ......*997";
+        let schematic = Schematic::from_str(EXAMPLE).expect("failed to parse schematic");
+        assert_eq!(schematic.sum_valid_parts(), 4361 + 997);
+    }
+
+    #[test]
+    fn test_sum_gear_ratios() {
+        const EXAMPLE: &str = "467..114..
+                               ...*......
+                               ..35..633.
+                               ......#...
+                               617*......
+                               .....+.58.
+                               ..592.....
+                               ......755.
+                               ...$.*....
+                               .664.598..
+                               ......*997";
+        let schematic = Schematic::from_str(EXAMPLE).expect("failed to parse schematic");
+        assert_eq!(schematic.sum_gear_ratios(), 467835 + 598 * 997);
     }
 
     #[test]
@@ -413,21 +524,48 @@ mod tests {
 
         assert_eq!(map.is_symbol(10, 0), Err(InvalidAddressError(10, 0)));
         assert_eq!(map.is_symbol(9, 2), Err(InvalidAddressError(9, 2)));
+
+        assert_eq!(map.potential_gears.len(), 1);
     }
 
     #[test]
     fn test_contains_symbol() {
-        let map = SymbolMap::from_str("...$.*....\n.....+.58.").expect("failed to parse input");
+        let map = SymbolMap::from_str("...$.*....\n.....*.58.").expect("failed to parse input");
         assert_eq!(map.contains_symbol(0.., 0), true);
         assert_eq!(map.contains_symbol(3..=3, 0), true);
         assert_eq!(map.contains_symbol(3..=3, 1), false);
+        assert_eq!(map.potential_gears.len(), 2);
     }
 
     #[test]
     fn test_symbol_type_from_char() {
-        assert_eq!(SymbolType::from('*'), SymbolType::Gear);
+        assert_eq!(SymbolType::from('*'), SymbolType::GearCandidate);
         assert_eq!(SymbolType::from('%'), SymbolType::Generic);
         assert_eq!(SymbolType::from('0'), SymbolType::None);
         assert_eq!(SymbolType::from('.'), SymbolType::None);
+    }
+
+    #[test]
+    fn test_part_number_is_adjacent() {
+        let part = PartNumber {
+            row: 17,
+            pos: 4,
+            len: 4,
+            number: 1234,
+        };
+        assert!(part.is_adjacent(SymbolPosition { x: 3, y: 16 }));
+        assert!(part.is_adjacent(SymbolPosition { x: 3, y: 17 }));
+        assert!(part.is_adjacent(SymbolPosition { x: 3, y: 18 }));
+
+        assert!(part.is_adjacent(SymbolPosition { x: 8, y: 16 }));
+        assert!(part.is_adjacent(SymbolPosition { x: 8, y: 17 }));
+        assert!(part.is_adjacent(SymbolPosition { x: 8, y: 18 }));
+
+        // ....1234....
+
+        assert!(!part.is_adjacent(SymbolPosition { x: 2, y: 17 }));
+        assert!(!part.is_adjacent(SymbolPosition { x: 9, y: 17 }));
+        assert!(!part.is_adjacent(SymbolPosition { x: 8, y: 15 }));
+        assert!(!part.is_adjacent(SymbolPosition { x: 9, y: 16 }));
     }
 }
