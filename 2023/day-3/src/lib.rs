@@ -20,7 +20,7 @@ pub struct Schematic {
 /// Represents a part number
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
-struct PartNumber {
+pub struct PartNumber {
     row: usize,
     pos: usize,
     len: usize,
@@ -52,7 +52,7 @@ enum SymbolType {
 }
 
 #[derive(Debug, Clone)]
-struct SymbolPosition {
+pub struct SymbolPosition {
     x: usize,
     y: usize,
 }
@@ -120,7 +120,87 @@ impl Schematic {
     }
 }
 
+impl SymbolPosition {
+    /// Creates a new symbol position.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use aoc_2023_day_3::SymbolPosition;
+    ///
+    /// let pos = SymbolPosition::new(42, 1337);
+    /// assert_eq!(pos.x(), 42);
+    /// assert_eq!(pos.y(), 1337);
+    /// ```
+    pub fn new(x: usize, y: usize) -> Self {
+        Self { x, y }
+    }
+
+    /// Gets the x coordinate.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use aoc_2023_day_3::SymbolPosition;
+    ///
+    /// let pos = SymbolPosition::new(42, 1337);
+    /// assert_eq!(pos.x(), 42)
+    /// ```
+    pub fn x(&self) -> usize {
+        self.x
+    }
+
+    /// Gets the y coordinate.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use aoc_2023_day_3::SymbolPosition;
+    ///
+    /// let pos = SymbolPosition::new(42, 1337);
+    /// assert_eq!(pos.y(), 1337)
+    /// ```
+    pub fn y(&self) -> usize {
+        self.y
+    }
+}
+
 impl PartNumber {
+    /// Creates a new [`PartNumber`].
+    pub fn new(pos: usize, row: usize, len: usize, number: u32) -> Self {
+        debug_assert_eq!(format!("{number}").len(), len);
+        Self {
+            pos,
+            row,
+            len,
+            number,
+        }
+    }
+
+    /// Checks if the given position is adjacent to the current symbol position.
+    ///
+    /// # Arguments
+    ///
+    /// - `position`: The position to check for adjacency. Must implement the `Borrow<SymbolPosition>` trait.
+    ///
+    /// # Returns
+    ///
+    /// - `true` if the given position is adjacent to the current symbol position.
+    /// - `false` otherwise.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use aoc_2023_day_3::{PartNumber, SymbolPosition};
+    ///
+    /// let part = PartNumber::new(2, 4, 5, 12345);
+    ///
+    /// let adjacent_position = SymbolPosition::new(3, 3);
+    /// let nonadjacent_position = SymbolPosition::new(1, 2);
+    ///
+    /// assert!(part.is_adjacent(&adjacent_position));
+    /// assert!(!part.is_adjacent(&nonadjacent_position));
+    /// ```
     pub fn is_adjacent<P: Borrow<SymbolPosition>>(&self, position: P) -> bool {
         let position = position.borrow();
         let x = position.x as isize;
