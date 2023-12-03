@@ -102,7 +102,7 @@ impl Schematic {
             // in the relevant line range, even though we could limit them by x offset.
             let values: Vec<_> = self.valid[lower..upper]
                 .iter()
-                .filter(|part| part.is_adjacent(potential_gear))
+                .filter(|&part| part.is_adjacent(potential_gear))
                 .map(|part| part.number)
                 .collect();
 

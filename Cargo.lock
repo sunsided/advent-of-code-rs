@@ -29,9 +29,6 @@ dependencies = [
 [[package]]
 name = "aoc-2023-day-3"
 version = "0.1.0"
-dependencies = [
- "rstest",
-]
 
 [[package]]
 name = "autocfg"

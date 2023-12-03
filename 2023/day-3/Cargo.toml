@@ -12,6 +12,3 @@ edition = "2021"
 [[example]]
 name = "2023-day-3"
 path = "example/main.rs"
-
-[dev-dependencies]
-rstest = "0.18.2"
