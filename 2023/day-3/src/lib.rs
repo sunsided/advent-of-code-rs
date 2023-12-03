@@ -92,9 +92,15 @@ impl Schematic {
     pub fn sum_gear_ratios(&self) -> u32 {
         let mut sum = 0;
         for potential_gear in self.symbol_map.potential_gears() {
-            // Find all adjacent numbers. This is beautifully shitty as it goes through all numbers.
-            let values: Vec<_> = self
+            // Select only those numbers that fall into the relevant line range.
+            let lower = self.valid.partition_point(|p| p.row < potential_gear.y - 1);
+            let upper = self
                 .valid
+                .partition_point(|p| p.row <= potential_gear.y + 1);
+
+            // Find all adjacent numbers. This is beautifully shitty as it goes through all numbers
+            // in the relevant line range, even though we could limit them by x offset.
+            let values: Vec<_> = self.valid[lower..upper]
                 .iter()
                 .filter(|part| part.is_adjacent(potential_gear))
                 .map(|part| part.number)
