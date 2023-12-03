@@ -31,7 +31,46 @@ struct PartNumber {
 struct SymbolMap {
     num_lines: usize,
     line_length: usize,
-    map: Vec<bool>,
+    map: Vec<SymbolType>,
+}
+
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
+enum SymbolType {
+    None,
+    Generic,
+    Gear,
+}
+
+impl SymbolType {
+    /// Determines if the current value represents a symbol.
+    fn is_symbol(&self) -> bool {
+        match self {
+            SymbolType::None => false,
+            SymbolType::Generic => true,
+            SymbolType::Gear => true,
+        }
+    }
+
+    /// Determines if the current value represents a gear.
+    fn is_gear(&self) -> bool {
+        match self {
+            SymbolType::None => false,
+            SymbolType::Generic => false,
+            SymbolType::Gear => true,
+        }
+    }
+}
+
+impl From<char> for SymbolType {
+    fn from(value: char) -> Self {
+        if value == '*' {
+            Self::Gear
+        } else if !value.is_ascii_digit() && value != '.' {
+            Self::Generic
+        } else {
+            Self::None
+        }
+    }
 }
 
 impl FromStr for Schematic {
@@ -132,7 +171,7 @@ impl SymbolMap {
             return Err(InvalidAddressError(x, y));
         }
 
-        Ok(self.map[y * self.line_length + x])
+        Ok(self.map[y * self.line_length + x]).map(|s| s.is_symbol())
     }
 
     /// Checks if there is a symbol adjacent to the given row and range of columns.
@@ -193,7 +232,7 @@ impl SymbolMap {
         let line = &self.map[line_start..line_end];
 
         let segment = &line[start..=end];
-        segment.iter().any(|&is_symbol| is_symbol)
+        segment.iter().any(|&is_symbol| is_symbol.is_symbol())
     }
 }
 
@@ -227,8 +266,7 @@ impl FromStr for SymbolMap {
 
             // Convert every character into a boolean. true implies the character was a symbol,
             // false implies it was not. Dots do not count as a character as per the problem description.
-            let predicate = |c: char| !c.is_ascii_digit() && c != '.';
-            let symbol_detection = line.chars().map(predicate);
+            let symbol_detection = line.chars().map(SymbolType::from);
 
             map.extend(symbol_detection);
         }
@@ -383,5 +421,13 @@ mod tests {
         assert_eq!(map.contains_symbol(0.., 0), true);
         assert_eq!(map.contains_symbol(3..=3, 0), true);
         assert_eq!(map.contains_symbol(3..=3, 1), false);
+    }
+
+    #[test]
+    fn test_symbol_type_from_char() {
+        assert_eq!(SymbolType::from('*'), SymbolType::Gear);
+        assert_eq!(SymbolType::from('%'), SymbolType::Generic);
+        assert_eq!(SymbolType::from('0'), SymbolType::None);
+        assert_eq!(SymbolType::from('.'), SymbolType::None);
     }
 }
