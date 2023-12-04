@@ -11,6 +11,21 @@ pub struct Card {
 }
 
 impl Card {
+    pub fn parse_all(input: &str) -> Result<Vec<Card>, ParseCardError> {
+        input
+            .lines()
+            .map(|line| line.trim())
+            .filter(|line| !line.is_empty())
+            .map(|line| Card::from_str(line))
+            .collect()
+    }
+
+    pub fn sum_all_scores(input: &str) -> Result<u32, ParseCardError> {
+        Ok(Self::parse_all(input)?
+            .iter()
+            .fold(0, |sum, card| sum + card.get_score()))
+    }
+
     pub fn get_num_winning(&self) -> u32 {
         let winning: HashSet<&u32> = HashSet::from_iter(&self.winning_numbers);
         let ours = HashSet::from_iter(&self.our_numbers);
