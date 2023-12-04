@@ -1,0 +1,17 @@
+[package]
+name = "aoc-2023-day-4"
+description = "Advent of Code 2023, Day 4: Scratchcards"
+authors = ["Markus Mayer <github@widemeadows.de>"]
+homepage = "https://adventofcode.com/2023/day/4"
+repository = "https://github.com/sunsided/aoc-rs"
+readme = "README.md"
+license = "EUPL-1.2"
+version = "0.1.0"
+edition = "2021"
+
+[[example]]
+name = "2023-day-4"
+path = "example/main.rs"
+
+[dev-dependencies]
+rstest = "0.18.2"
