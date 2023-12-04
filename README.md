@@ -7,6 +7,7 @@ Solutions to [Advent of Code], implemented in Rust.
 - [Day 1: Trebuchet?!](2023/day-1)
 - [Day 2: Cube Conundrum](2023/day-2)
 - [Day 3: Gear Ratios](2023/day-3)
+- [Day 4: Scratchcards](2023/day-4)
 
 ## 2022
 
