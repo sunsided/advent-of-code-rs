@@ -1,7 +1,6 @@
 use aoc_utils::parse_whitespace_delimited;
 use itertools::Itertools;
 use rayon::prelude::*;
-use std::cmp::Ordering;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::{Add, Range, Sub};
@@ -52,14 +51,17 @@ create_type!(Humidity);
 create_type!(Location);
 
 impl Almanac {
-    /// Partial solution for the first part of the puzzle. Maps each loaded seed into a location.
-    pub fn map_seeds(&self) -> impl Iterator<Item = (Seed, Location)> + '_ {
-        self.seeds.iter().map(|&seed| (seed, self.map_seed(seed)))
+    /// Solution for the first part of the puzzle. Maps each loaded seed into a location.
+    pub fn map_smallest_from_seeds(&self) -> Option<(Seed, Location)> {
+        self.seeds
+            .iter()
+            .map(|&seed| (seed, self.map_seed(seed)))
+            .min_by(|(_, lhs), (_, rhs)| lhs.cmp(&rhs))
     }
 
-    /// Partial solution for the second part of the puzzle. Treats each pair of seeds as a
+    /// Solution for the second part of the puzzle. Treats each pair of seeds as a
     /// seed and a number of repetitions, then maps these.
-    pub fn map_seed_ranges(&self) -> impl ParallelIterator<Item = (Seed, Location)> + '_ {
+    pub fn map_smallest_from_seed_ranges(&self) -> Option<(Seed, Location)> {
         self.seeds
             .iter()
             .tuple_windows()
@@ -68,6 +70,7 @@ impl Almanac {
             })
             .par_bridge()
             .map(|seed| (seed, self.map_seed(seed)))
+            .min_by_key(|(_, loc)| loc.value())
     }
 
     fn map_seed(&self, seed: Seed) -> Location {
@@ -105,8 +108,6 @@ impl Almanac {
 }
 
 struct MapRangeSet<Destination, Source> {
-    start: Source,
-    end: Source,
     ranges: Vec<MapRange<Destination, Source>>,
 }
 
@@ -115,18 +116,19 @@ where
     Destination: AlmanacType,
     Source: AlmanacType,
 {
-    fn map(&self, source: Source) -> Destination {
-        if source < self.start || source > self.end {
-            return Destination::from(source.into());
-        }
+    #[allow(dead_code)]
+    fn len(&self) -> usize {
+        self.ranges.len()
+    }
 
+    fn map(&self, source: Source) -> Destination {
         // let partition = self.ranges.partition_point(|map| map.source.end < source);
         // let ranges = &self.ranges[partition..];
         if let Some(entry) = self
             .ranges
             .iter()
             .filter(|&map| map.source.start <= source)
-            .filter(|&map| map.source.end >= source)
+            .filter(|&map| map.source.end > source)
             .find_map(|map| map.map(source))
         {
             entry
@@ -146,20 +148,38 @@ where
     fn from(mut ranges: Vec<MapRange<Destination, Source>>) -> Self {
         ranges.sort_by_key(|r| r.source.start);
 
-        let start = ranges
-            .iter()
-            .min_by_key(|&r| r.source.start)
-            .expect("empty range")
-            .source
-            .start;
-        let end = ranges
-            .iter()
-            .max_by_key(|&r| r.source.end)
-            .expect("empty range")
-            .source
-            .end;
+        // Find holes and plug them. This provides full coverage of the entire value space.
+        let mut next_start = 0;
+        let mut plugs = Vec::new();
+        for range in &ranges {
+            let range_start = range.source.start.into();
+            if range_start > next_start {
+                let length = range_start - next_start;
+                plugs.push(MapRange {
+                    source: Source::from(next_start)..Source::from(range_start),
+                    destination: Destination::from(next_start)
+                        ..Destination::from(next_start) + (length as usize),
+                    length: length as _,
+                })
+            }
+            next_start = range.source.end.into();
+        }
 
-        Self { ranges, start, end }
+        // Merge and sort.
+        if !plugs.is_empty() {
+            ranges.extend(plugs.into_iter());
+            ranges.sort_by_key(|r| r.source.start);
+        }
+
+        // Fill in the last range. We do this after sorting because it always goes last anyway.
+        let last_range_start = (ranges[ranges.len() - 1].source.end).into();
+        ranges.push(MapRange {
+            source: Source::from(last_range_start)..Source::from(u32::MAX),
+            destination: Destination::from(next_start)..Destination::from(u32::MAX),
+            length: (u32::MAX - last_range_start) as usize,
+        });
+
+        Self { ranges }
     }
 }
 
@@ -172,6 +192,38 @@ where
     fn from_iter<T: IntoIterator<Item = MapRange<Destination, Source>>>(iter: T) -> Self {
         let ranges: Vec<MapRange<Destination, Source>> = iter.into_iter().collect();
         ranges.into()
+    }
+}
+
+impl<To, From> MapRange<To, From> {
+    pub fn new(destination: To, source: From, count: usize) -> Self
+    where
+        From: Add<usize, Output = From> + Copy,
+        To: Add<usize, Output = To> + Copy,
+    {
+        Self {
+            length: count,
+            destination: destination..(destination + count),
+            source: source..(source + count),
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn len(&self) -> usize {
+        self.length
+    }
+
+    pub fn map(&self, source: From) -> Option<To>
+    where
+        From: AlmanacType,
+        To: AlmanacType,
+    {
+        if source < self.source.start || source >= self.source.end {
+            return None;
+        }
+
+        let offset = source - self.source.start;
+        Some(self.destination.start + offset)
     }
 }
 
@@ -260,38 +312,6 @@ impl FromStr for Almanac {
             temperature_to_humidity,
             humidity_to_location,
         })
-    }
-}
-
-impl<To, From> MapRange<To, From> {
-    pub fn new(destination: To, source: From, count: usize) -> Self
-    where
-        From: Add<usize, Output = From> + Copy,
-        To: Add<usize, Output = To> + Copy,
-    {
-        Self {
-            length: count,
-            destination: destination..(destination + count),
-            source: source..(source + count),
-        }
-    }
-
-    #[allow(dead_code)]
-    pub fn len(&self) -> usize {
-        self.length
-    }
-
-    pub fn map(&self, source: From) -> Option<To>
-    where
-        From: AlmanacType,
-        To: AlmanacType,
-    {
-        if source < self.source.start || source > self.source.end {
-            return None;
-        }
-
-        let offset = source - self.source.start;
-        Some(self.destination.start + offset)
     }
 }
 
@@ -390,6 +410,10 @@ mod tests {
         assert_eq!(range.map(Seed(98)), Some(Soil(50)));
         assert_eq!(range.map(Seed(99)), Some(Soil(51)));
         assert_eq!(range.map(Seed(100)), None);
+
+        // End is exclusive.
+        assert!(range.source.contains(&Seed(99)));
+        assert!(!range.source.contains(&Seed(100)));
     }
 
     #[test]
@@ -436,13 +460,13 @@ mod tests {
 
         let almanac = Almanac::from_str(EXAMPLE).expect("failed to parse almanac");
         assert_eq!(almanac.seeds.len(), 4);
-        assert_eq!(almanac.seed_to_soil.len(), 2);
-        assert_eq!(almanac.soil_to_fertilizer.len(), 3);
-        assert_eq!(almanac.fertilizer_to_water.len(), 4);
-        assert_eq!(almanac.water_to_light.len(), 2);
-        assert_eq!(almanac.light_to_temperature.len(), 3);
-        assert_eq!(almanac.temperature_to_humidity.len(), 2);
-        assert_eq!(almanac.humidity_to_location.len(), 2);
+        assert_eq!(almanac.seed_to_soil.len(), 4);
+        assert_eq!(almanac.soil_to_fertilizer.len(), 4);
+        assert_eq!(almanac.fertilizer_to_water.len(), 5);
+        assert_eq!(almanac.water_to_light.len(), 4);
+        assert_eq!(almanac.light_to_temperature.len(), 5);
+        assert_eq!(almanac.temperature_to_humidity.len(), 3);
+        assert_eq!(almanac.humidity_to_location.len(), 4);
 
         assert_eq!(almanac.map_seed(Seed(79)), Location(82));
         assert_eq!(almanac.map_seed(Seed(14)), Location(43));

@@ -40,7 +40,7 @@ macro_rules! create_type {
             }
 
             impl PartialOrd for $type_name {
-                fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+                fn partial_cmp(&self, other: &Self) -> Option<::std::cmp::Ordering> {
                     self.0.partial_cmp(&other.0)
                 }
 

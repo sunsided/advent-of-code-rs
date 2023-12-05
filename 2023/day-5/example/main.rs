@@ -1,5 +1,4 @@
 use aoc_2023_day_5::Almanac;
-use rayon::prelude::*;
 use std::str::FromStr;
 
 const INPUT: &str = include_str!("../input.txt");
@@ -11,8 +10,7 @@ fn main() {
 
     // Part 1
     let smallest_location = almanac
-        .map_seeds()
-        .min_by(|(_, lhs), (_, rhs)| lhs.cmp(&rhs))
+        .map_smallest_from_seeds()
         .expect("invalid calculation");
     println!(
         "The smallest location number of the mapped seeds is for seed {} at location {}",
@@ -21,8 +19,7 @@ fn main() {
 
     // Part 2
     let smallest_location = almanac
-        .map_seed_ranges()
-        .min_by_key(|(_, loc)| loc.value())
+        .map_smallest_from_seed_ranges()
         .expect("invalid calculation");
     println!(
         "The smallest location number of the mapped seed ranges is for seed {} at location {}",
