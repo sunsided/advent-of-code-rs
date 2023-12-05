@@ -42,8 +42,6 @@ struct MapRange<To, From> {
     destination: Range<To>,
     /// The source range.
     source: Range<From>,
-    /// The smallest possible location reachable from this region. [`None`] if not yet determined.
-    smallest_location: Option<Location>,
 }
 
 create_type!(Seed);
@@ -196,8 +194,6 @@ impl Almanac {
         // For the last map (humidity to location), the lowest possible location for
         // each entry is the destination itself.
         for entry in &mut self.humidity_to_location.ranges {
-            entry.smallest_location = Some(entry.destination.start);
-
             // While we iterate, we can create slices in the map right before us, the
             // temperature to humidity map.
             self.temperature_to_humidity.slice(entry.source.start);
@@ -239,36 +235,6 @@ impl Almanac {
             // self.seed_to_soil.slice(entry.source.end);
         }
         self.seed_to_soil.sort();
-
-        // For seed to soil segment, determine the smallest reachable location.
-        let smallest_locations: Vec<_> = self
-            .seed_to_soil
-            .ranges
-            .iter()
-            .map(|map| map.source.start)
-            .map(|seed| self.map_seed(seed))
-            .collect();
-
-        // Determine the location at the section end for testing purposes.
-        let largest_locations: Vec<_> = self
-            .seed_to_soil
-            .ranges
-            .iter()
-            .map(|map| map.source.end - 1.into())
-            .map(|num| Seed::from(num as u64))
-            .map(|seed| self.map_seed(seed))
-            .collect();
-
-        for ((map, location_at_section_start), location_at_section_end) in self
-            .seed_to_soil
-            .ranges
-            .iter_mut()
-            .zip(smallest_locations)
-            .zip(largest_locations)
-        {
-            map.smallest_location = Some(location_at_section_start);
-            debug_assert!(location_at_section_start < location_at_section_end);
-        }
     }
 }
 
@@ -336,7 +302,6 @@ impl<To, From> MapRange<To, From> {
             length: count,
             destination: destination..(destination + count),
             source: source..(source + count),
-            smallest_location: None,
         }
     }
 
@@ -380,14 +345,12 @@ impl<To, From> MapRange<To, From> {
             source: self.source.start + offset..self.source.end,
             destination: self.destination.start + offset..self.destination.end,
             length: current_length - offset,
-            smallest_location: None,
         };
 
         *self = MapRange {
             source: self.source.start..self.source.start + offset,
             destination: self.destination.start..self.destination.start + offset,
             length: offset,
-            smallest_location: None,
         };
 
         new_range
@@ -416,7 +379,6 @@ where
                     destination: Destination::from(next_start)
                         ..Destination::from(next_start) + (length as usize),
                     length: length as _,
-                    smallest_location: None,
                 })
             }
             next_start = range.source.end.into();
@@ -437,7 +399,6 @@ where
             source: Source::from(last_range_start)..Source::from(u64::MAX),
             destination: Destination::from(next_start)..Destination::from(u64::MAX),
             length: (u64::MAX - last_range_start) as usize,
-            smallest_location: None,
         });
 
         Self { ranges }
