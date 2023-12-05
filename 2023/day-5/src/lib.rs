@@ -1,6 +1,9 @@
 use aoc_utils::parse_whitespace_delimited;
+use itertools::Itertools;
+use rayon::prelude::*;
+use std::cmp::Ordering;
 use std::error::Error;
-use std::fmt::{Display, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use std::ops::{Add, Range, Sub};
 use std::str::FromStr;
 
@@ -16,6 +19,7 @@ pub trait AlmanacType:
     + FromStr
     + From<u32>
     + Into<u32>
+    + Debug
     + Add<usize, Output = Self>
     + Sub<Self, Output = usize>
 {
@@ -23,13 +27,13 @@ pub trait AlmanacType:
 
 pub struct Almanac {
     seeds: Vec<Seed>,
-    seed_to_soil: Vec<MapRange<Soil, Seed>>,
-    soil_to_fertilizer: Vec<MapRange<Fertilizer, Soil>>,
-    fertilizer_to_water: Vec<MapRange<Water, Fertilizer>>,
-    water_to_light: Vec<MapRange<Light, Water>>,
-    light_to_temperature: Vec<MapRange<Temperature, Light>>,
-    temperature_to_humidity: Vec<MapRange<Humidity, Temperature>>,
-    humidity_to_location: Vec<MapRange<Location, Humidity>>,
+    seed_to_soil: MapRangeSet<Soil, Seed>,
+    soil_to_fertilizer: MapRangeSet<Fertilizer, Soil>,
+    fertilizer_to_water: MapRangeSet<Water, Fertilizer>,
+    water_to_light: MapRangeSet<Light, Water>,
+    light_to_temperature: MapRangeSet<Temperature, Light>,
+    temperature_to_humidity: MapRangeSet<Humidity, Temperature>,
+    humidity_to_location: MapRangeSet<Location, Humidity>,
 }
 
 struct MapRange<To, From> {
@@ -48,40 +52,38 @@ create_type!(Humidity);
 create_type!(Location);
 
 impl Almanac {
+    /// Partial solution for the first part of the puzzle. Maps each loaded seed into a location.
     pub fn map_seeds(&self) -> impl Iterator<Item = (Seed, Location)> + '_ {
         self.seeds.iter().map(|&seed| (seed, self.map_seed(seed)))
     }
 
-    fn map_seed(&self, seed: Seed) -> Location {
-        let soil = Self::map(&self.seed_to_soil, seed);
-        let fertilizer = Self::map(&self.soil_to_fertilizer, soil);
-        let water = Self::map(&self.fertilizer_to_water, fertilizer);
-        let light = Self::map(&self.water_to_light, water);
-        let temperature = Self::map(&self.light_to_temperature, light);
-        let humidity = Self::map(&self.temperature_to_humidity, temperature);
-        Self::map(&self.humidity_to_location, humidity)
+    /// Partial solution for the second part of the puzzle. Treats each pair of seeds as a
+    /// seed and a number of repetitions, then maps these.
+    pub fn map_seed_ranges(&self) -> impl ParallelIterator<Item = (Seed, Location)> + '_ {
+        self.seeds
+            .iter()
+            .tuple_windows()
+            .flat_map(|(&seed, &repetitions)| {
+                (0..repetitions.value() as usize).map(move |i| seed + i)
+            })
+            .par_bridge()
+            .map(|seed| (seed, self.map_seed(seed)))
     }
 
-    fn map<Destination, Source>(
-        maps: &[MapRange<Destination, Source>],
-        source: Source,
-    ) -> Destination
-    where
-        Destination: AlmanacType,
-        Source: AlmanacType,
-    {
-        if let Some(entry) = maps.iter().find_map(|map| map.map(source)) {
-            entry
-        } else {
-            // "Any source numbers that aren't mapped correspond to the same destination number."
-            Destination::from(source.into())
-        }
+    fn map_seed(&self, seed: Seed) -> Location {
+        let soil = self.seed_to_soil.map(seed);
+        let fertilizer = self.soil_to_fertilizer.map(soil);
+        let water = self.fertilizer_to_water.map(fertilizer);
+        let light = self.water_to_light.map(water);
+        let temperature = self.light_to_temperature.map(light);
+        let humidity = self.temperature_to_humidity.map(temperature);
+        self.humidity_to_location.map(humidity)
     }
 
     fn parse_section<Destination, Source>(
         section: &str,
         name: &str,
-    ) -> Result<Vec<MapRange<Destination, Source>>, ParseAlmanacError>
+    ) -> Result<MapRangeSet<Destination, Source>, ParseAlmanacError>
     where
         Destination: AlmanacType,
         Source: AlmanacType,
@@ -97,7 +99,79 @@ impl Almanac {
             .map(MapRange::<Destination, Source>::from_str)
             .collect::<Result<_, _>>()
             .map_err(|_| ParseAlmanacError("unable to parse map range"))?;
-        Ok(maps)
+
+        Ok(MapRangeSet::from(maps))
+    }
+}
+
+struct MapRangeSet<Destination, Source> {
+    start: Source,
+    end: Source,
+    ranges: Vec<MapRange<Destination, Source>>,
+}
+
+impl<Destination, Source> MapRangeSet<Destination, Source>
+where
+    Destination: AlmanacType,
+    Source: AlmanacType,
+{
+    fn map(&self, source: Source) -> Destination {
+        if source < self.start || source > self.end {
+            return Destination::from(source.into());
+        }
+
+        // let partition = self.ranges.partition_point(|map| map.source.end < source);
+        // let ranges = &self.ranges[partition..];
+        if let Some(entry) = self
+            .ranges
+            .iter()
+            .filter(|&map| map.source.start <= source)
+            .filter(|&map| map.source.end >= source)
+            .find_map(|map| map.map(source))
+        {
+            entry
+        } else {
+            // "Any source numbers that aren't mapped correspond to the same destination number."
+            Destination::from(source.into())
+        }
+    }
+}
+
+impl<Destination, Source> From<Vec<MapRange<Destination, Source>>>
+    for MapRangeSet<Destination, Source>
+where
+    Destination: AlmanacType,
+    Source: AlmanacType,
+{
+    fn from(mut ranges: Vec<MapRange<Destination, Source>>) -> Self {
+        ranges.sort_by_key(|r| r.source.start);
+
+        let start = ranges
+            .iter()
+            .min_by_key(|&r| r.source.start)
+            .expect("empty range")
+            .source
+            .start;
+        let end = ranges
+            .iter()
+            .max_by_key(|&r| r.source.end)
+            .expect("empty range")
+            .source
+            .end;
+
+        Self { ranges, start, end }
+    }
+}
+
+impl<Destination, Source> FromIterator<MapRange<Destination, Source>>
+    for MapRangeSet<Destination, Source>
+where
+    Destination: AlmanacType,
+    Source: AlmanacType,
+{
+    fn from_iter<T: IntoIterator<Item = MapRange<Destination, Source>>>(iter: T) -> Self {
+        let ranges: Vec<MapRange<Destination, Source>> = iter.into_iter().collect();
+        ranges.into()
     }
 }
 
@@ -212,12 +286,10 @@ impl<To, From> MapRange<To, From> {
         From: AlmanacType,
         To: AlmanacType,
     {
-        if !self.source.contains(&source) {
+        if source < self.source.start || source > self.source.end {
             return None;
         }
 
-        debug_assert!(source >= self.source.start);
-        debug_assert!(source < self.source.end);
         let offset = source - self.source.start;
         Some(self.destination.start + offset)
     }

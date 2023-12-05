@@ -2,7 +2,7 @@
 macro_rules! create_type {
     ($type_name:ident) => {
         paste::paste! {
-            #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
+            #[derive(Debug, Copy, Clone, Eq, Ord)]
             pub struct $type_name(u32);
 
             impl $type_name {
@@ -28,6 +28,38 @@ macro_rules! create_type {
             }
 
             impl crate::AlmanacType for $type_name {}
+
+            impl PartialEq for $type_name {
+                fn eq(&self, other: &Self) -> bool {
+                    self.0 == other.0
+                }
+
+                fn ne(&self, other: &Self) -> bool {
+                    self.0 != other.0
+                }
+            }
+
+            impl PartialOrd for $type_name {
+                fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+                    self.0.partial_cmp(&other.0)
+                }
+
+                fn lt(&self, other: &Self) -> bool {
+                    self.0 < other.0
+                }
+
+                fn le(&self, other: &Self) -> bool {
+                    self.0 <= other.0
+                }
+
+                fn gt(&self, other: &Self) -> bool {
+                    self.0 > other.0
+                }
+
+                fn ge(&self, other: &Self) -> bool {
+                    self.0 >= other.0
+                }
+            }
 
             impl ::std::ops::Add<usize> for $type_name {
                 type Output = $type_name;
