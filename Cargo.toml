@@ -1,5 +1,6 @@
 [workspace]
 members = [
-    "2023/*"
+    "2023/*",
+    "utils"
 ]
 resolver = "2"
