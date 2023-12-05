@@ -1,0 +1,9 @@
+[package]
+name = "aoc-utils"
+description = "Advent of Code utilizies"
+authors = ["Markus Mayer <github@widemeadows.de>"]
+repository = "https://github.com/sunsided/aoc-rs"
+readme = "README.md"
+license = "EUPL-1.2"
+version = "0.1.0"
+edition = "2021"
