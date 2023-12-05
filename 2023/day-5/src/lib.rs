@@ -62,7 +62,7 @@ impl Almanac {
         self.seeds
             .iter()
             .map(|&seed| (seed, self.map_seed(seed)))
-            .min_by(|(_, lhs), (_, rhs)| lhs.cmp(&rhs))
+            .min_by(|(_, lhs), (_, rhs)| lhs.cmp(rhs))
     }
 
     /// Solution for the second part of the puzzle. Treats each pair of seeds as a
@@ -386,7 +386,7 @@ where
 
         // Merge and sort.
         if !plugs.is_empty() {
-            ranges.extend(plugs.into_iter());
+            ranges.extend(plugs);
             ranges.sort_by_key(|r| r.source.start);
         }
 
