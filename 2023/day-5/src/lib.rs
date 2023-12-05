@@ -1,6 +1,5 @@
 use aoc_utils::parse_whitespace_delimited;
 use itertools::Itertools;
-use rayon::prelude::*;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::{Add, Range, Sub};
@@ -16,10 +15,11 @@ pub trait AlmanacType:
     + Ord
     + PartialOrd
     + FromStr
-    + From<u32>
-    + Into<u32>
+    + From<u64>
+    + Into<u64>
     + Debug
     + Add<usize, Output = Self>
+    + Add<u64, Output = Self>
     + Sub<Self, Output = usize>
 {
 }
@@ -36,9 +36,14 @@ pub struct Almanac {
 }
 
 struct MapRange<To, From> {
+    /// The length of the range.
     length: usize,
+    /// The destination range.
     destination: Range<To>,
+    /// The source range.
     source: Range<From>,
+    /// The smallest possible location reachable from this region. [`None`] if not yet determined.
+    smallest_location: Option<Location>,
 }
 
 create_type!(Seed);
@@ -52,6 +57,9 @@ create_type!(Location);
 
 impl Almanac {
     /// Solution for the first part of the puzzle. Maps each loaded seed into a location.
+    ///
+    /// For each of the listed seeds we perform a lookup using [`map_seed`](Almanac::map_seed)
+    /// and return the smallest location.
     pub fn map_smallest_from_seeds(&self) -> Option<(Seed, Location)> {
         self.seeds
             .iter()
@@ -61,16 +69,91 @@ impl Almanac {
 
     /// Solution for the second part of the puzzle. Treats each pair of seeds as a
     /// seed and a number of repetitions, then maps these.
+    ///
+    /// This solution works by back-propagating the possible locations up to the initial seeds.
+    /// - First, all implied ranges ("Any source numbers that aren't mapped correspond to the same
+    ///   destination number") are explicitly filled in.
+    /// - Starting from the locations, all spots where a location slice change occurs in the
+    ///   `humidity-to-location` map are marked in the previous map (`temperature-to-humidity`).
+    ///   We know that locations are only sequentially growing within a range; by slicing the
+    ///   ranges in the map above, we must re-evaluate the location for each slice when we search.
+    /// - For each (now sliced) humidity entry in the `temperature-to-humidity` map, we slice
+    ///   the `light-to-temperature` above.
+    /// - We repeat these steps up until the `seeds-to-soil` map.
+    ///
+    /// These steps above already happen when parsing the [`Almanac`].
+    ///
+    /// - We now produce proper value ranges from the `seeds`.
+    /// - For each range in the `seeds-to-soil` map we slice the seed ranges. For this
+    ///   we detect all seed ranges that overlap with each individual `seed-to-soil` range.
+    /// - The combination of these approaches guarantees that each individual slice of the seeds
+    ///   now has growing location numbers; as a result, we only need to test the start of the
+    ///   seed range using [`map_seed`](Almanac::map_seed).
+    /// - The smallest location for each of these is the winner.
     pub fn map_smallest_from_seed_ranges(&self) -> Option<(Seed, Location)> {
-        self.seeds
-            .iter()
-            .tuple_windows()
-            .flat_map(|(&seed, &repetitions)| {
-                (0..repetitions.value() as usize).map(move |i| seed + i)
-            })
-            .par_bridge()
-            .map(|seed| (seed, self.map_seed(seed)))
-            .min_by_key(|(_, loc)| loc.value())
+        let mut seeds = Vec::new();
+        for pair in &self.seeds.iter().chunks(2) {
+            let pair = pair.collect::<Vec<_>>();
+            let (&start, repetitions) = (pair[0], pair[1].value());
+            seeds.push(start..start + repetitions)
+        }
+        seeds.sort_by_key(|range| range.start);
+
+        // Slice the seeds according to the first map.
+        let mut extra_slices = Vec::new();
+        for range in &self.seed_to_soil.ranges {
+            // If there is a seed range that contains a boundary, slice it.
+            let positions: Vec<_> = seeds
+                .iter()
+                // find overlapping slices
+                .filter(|seed| range.source.start < seed.end && seed.start < range.source.end)
+                .enumerate()
+                .map(|(pos, _)| pos)
+                .collect();
+
+            for pos in positions {
+                let seed_range = &seeds[pos];
+
+                // Don't slice direct matches.
+                if seed_range.start == range.source.start {
+                    continue;
+                }
+
+                let updated_range = seed_range.start..range.source.start;
+                let sliced_range = range.source.start..seed_range.end;
+                seeds[pos] = updated_range;
+                extra_slices.push(sliced_range);
+            }
+        }
+
+        seeds.extend(extra_slices);
+        seeds.sort_by_key(|seed| seed.start);
+
+        // Now iterate through all the seed ranges. The start index corresponds to the smallest
+        // possible location.
+        let mut best_location: Option<Location> = None;
+        let mut best_seed: Option<Seed> = None;
+        for seed in seeds {
+            let better = self.map_seed(seed.start);
+
+            if let Some(location) = best_location {
+                if better >= location {
+                    continue;
+                }
+            }
+
+            best_location = Some(better);
+            best_seed = Some(seed.start);
+
+            // Sanity check that the end of the sliced seeds is indeed a larger location.
+            let last = self.map_seed(Seed::from(seed.end.value() - 1));
+            debug_assert!(last > better);
+        }
+
+        Some((
+            best_seed.expect("found no location"),
+            best_location.expect("found no location"),
+        ))
     }
 
     fn map_seed(&self, seed: Seed) -> Location {
@@ -105,6 +188,88 @@ impl Almanac {
 
         Ok(MapRangeSet::from(maps))
     }
+
+    /// Patches the almanac, ensuring that the optimal
+    fn optimize_after_construction(&mut self) {
+        self.humidity_to_location.sort();
+
+        // For the last map (humidity to location), the lowest possible location for
+        // each entry is the destination itself.
+        for entry in &mut self.humidity_to_location.ranges {
+            entry.smallest_location = Some(entry.destination.start);
+
+            // While we iterate, we can create slices in the map right before us, the
+            // temperature to humidity map.
+            self.temperature_to_humidity.slice(entry.source.start);
+            // self.temperature_to_humidity.slice(entry.source.end);
+        }
+        self.temperature_to_humidity.sort();
+
+        // Slice the light to temperature map.
+        for entry in &self.temperature_to_humidity.ranges {
+            self.light_to_temperature.slice(entry.source.start);
+            // self.light_to_temperature.slice(entry.source.end);
+        }
+        self.light_to_temperature.sort();
+
+        // Slice the water to light map.
+        for entry in &self.light_to_temperature.ranges {
+            self.water_to_light.slice(entry.source.start);
+            // self.water_to_light.slice(entry.source.end);
+        }
+        self.water_to_light.sort();
+
+        // Slice the fertilizer to water map.
+        for entry in &self.water_to_light.ranges {
+            self.fertilizer_to_water.slice(entry.source.start);
+            // self.fertilizer_to_water.slice(entry.source.end);
+        }
+        self.fertilizer_to_water.sort();
+
+        // Slice the soil to fertilizer map.
+        for entry in &self.fertilizer_to_water.ranges {
+            self.soil_to_fertilizer.slice(entry.source.start);
+            // self.soil_to_fertilizer.slice(entry.source.end);
+        }
+        self.soil_to_fertilizer.sort();
+
+        // Slice the seed to soil map.
+        for entry in &self.soil_to_fertilizer.ranges {
+            self.seed_to_soil.slice(entry.source.start);
+            // self.seed_to_soil.slice(entry.source.end);
+        }
+        self.seed_to_soil.sort();
+
+        // For seed to soil segment, determine the smallest reachable location.
+        let smallest_locations: Vec<_> = self
+            .seed_to_soil
+            .ranges
+            .iter()
+            .map(|map| map.source.start)
+            .map(|seed| self.map_seed(seed))
+            .collect();
+
+        // Determine the location at the section end for testing purposes.
+        let largest_locations: Vec<_> = self
+            .seed_to_soil
+            .ranges
+            .iter()
+            .map(|map| map.source.end - 1.into())
+            .map(|num| Seed::from(num as u64))
+            .map(|seed| self.map_seed(seed))
+            .collect();
+
+        for ((map, location_at_section_start), location_at_section_end) in self
+            .seed_to_soil
+            .ranges
+            .iter_mut()
+            .zip(smallest_locations)
+            .zip(largest_locations)
+        {
+            map.smallest_location = Some(location_at_section_start);
+            debug_assert!(location_at_section_start < location_at_section_end);
+        }
+    }
 }
 
 struct MapRangeSet<Destination, Source> {
@@ -122,76 +287,42 @@ where
     }
 
     fn map(&self, source: Source) -> Destination {
-        // let partition = self.ranges.partition_point(|map| map.source.end < source);
-        // let ranges = &self.ranges[partition..];
-        if let Some(entry) = self
-            .ranges
+        self.ranges
             .iter()
             .filter(|&map| map.source.start <= source)
             .filter(|&map| map.source.end > source)
             .find_map(|map| map.map(source))
+            .expect("not all ranges are covered")
+    }
+
+    /// Sorts the set, e.g. after a call to [`slice`](MapRangeSet::slice).
+    fn sort(&mut self) {
+        self.ranges.sort_by_key(|r| r.source.start);
+    }
+
+    /// Slices the map set so that the [`MapRange`] containing the destination index is split
+    /// across that index, such that the left part does not contain it and the right part start
+    /// with it.
+    ///
+    /// After this, the segment list is unsorted and should be [sorted](MapRangeSet::sort) again for proper use.
+    fn slice(&mut self, index: Destination) {
+        let pos = match self
+            .ranges
+            .iter_mut()
+            .position(|map| map.destination.start <= index && map.destination.end > index)
         {
-            entry
-        } else {
-            // "Any source numbers that aren't mapped correspond to the same destination number."
-            Destination::from(source.into())
-        }
-    }
-}
+            // It's possible that the destination range is unmapped in the current set.
+            None => return,
+            Some(pos) => pos,
+        };
 
-impl<Destination, Source> From<Vec<MapRange<Destination, Source>>>
-    for MapRangeSet<Destination, Source>
-where
-    Destination: AlmanacType,
-    Source: AlmanacType,
-{
-    fn from(mut ranges: Vec<MapRange<Destination, Source>>) -> Self {
-        ranges.sort_by_key(|r| r.source.start);
-
-        // Find holes and plug them. This provides full coverage of the entire value space.
-        let mut next_start = 0;
-        let mut plugs = Vec::new();
-        for range in &ranges {
-            let range_start = range.source.start.into();
-            if range_start > next_start {
-                let length = range_start - next_start;
-                plugs.push(MapRange {
-                    source: Source::from(next_start)..Source::from(range_start),
-                    destination: Destination::from(next_start)
-                        ..Destination::from(next_start) + (length as usize),
-                    length: length as _,
-                })
-            }
-            next_start = range.source.end.into();
+        // Don't slice if it's an exact boundary.
+        if self.ranges[pos].destination.start == index {
+            return;
         }
 
-        // Merge and sort.
-        if !plugs.is_empty() {
-            ranges.extend(plugs.into_iter());
-            ranges.sort_by_key(|r| r.source.start);
-        }
-
-        // Fill in the last range. We do this after sorting because it always goes last anyway.
-        let last_range_start = (ranges[ranges.len() - 1].source.end).into();
-        ranges.push(MapRange {
-            source: Source::from(last_range_start)..Source::from(u32::MAX),
-            destination: Destination::from(next_start)..Destination::from(u32::MAX),
-            length: (u32::MAX - last_range_start) as usize,
-        });
-
-        Self { ranges }
-    }
-}
-
-impl<Destination, Source> FromIterator<MapRange<Destination, Source>>
-    for MapRangeSet<Destination, Source>
-where
-    Destination: AlmanacType,
-    Source: AlmanacType,
-{
-    fn from_iter<T: IntoIterator<Item = MapRange<Destination, Source>>>(iter: T) -> Self {
-        let ranges: Vec<MapRange<Destination, Source>> = iter.into_iter().collect();
-        ranges.into()
+        let sliced_range = self.ranges[pos].slice(index);
+        self.ranges.push(sliced_range);
     }
 }
 
@@ -205,6 +336,7 @@ impl<To, From> MapRange<To, From> {
             length: count,
             destination: destination..(destination + count),
             source: source..(source + count),
+            smallest_location: None,
         }
     }
 
@@ -224,6 +356,103 @@ impl<To, From> MapRange<To, From> {
 
         let offset = source - self.source.start;
         Some(self.destination.start + offset)
+    }
+
+    /// Slices the map set so that the [`MapRange`] containing the destination index is split
+    /// across that index, such that the left part does not contain it and the right part start
+    /// with it.
+    ///
+    /// After this, the segment list is unsorted and should be sorted again for proper use.
+    fn slice(&mut self, index: To) -> MapRange<To, From>
+    where
+        To: AlmanacType,
+        From: AlmanacType,
+    {
+        debug_assert!(self.destination.contains(&index));
+
+        // The offset within the range at which to cut.
+        let offset = index - self.destination.start;
+
+        // The length prior to cutting.
+        let current_length = self.length;
+
+        let new_range = MapRange {
+            source: self.source.start + offset..self.source.end,
+            destination: self.destination.start + offset..self.destination.end,
+            length: current_length - offset,
+            smallest_location: None,
+        };
+
+        *self = MapRange {
+            source: self.source.start..self.source.start + offset,
+            destination: self.destination.start..self.destination.start + offset,
+            length: offset,
+            smallest_location: None,
+        };
+
+        new_range
+    }
+}
+
+impl<Destination, Source> From<Vec<MapRange<Destination, Source>>>
+    for MapRangeSet<Destination, Source>
+where
+    Destination: AlmanacType,
+    Source: AlmanacType,
+{
+    fn from(mut ranges: Vec<MapRange<Destination, Source>>) -> Self {
+        ranges.sort_by_key(|r| r.source.start);
+
+        // Find holes and plug them. This provides full coverage of the entire value space.
+        let mut next_start = 0;
+        let mut plugs = Vec::new();
+        for range in &ranges {
+            let range_start = range.source.start.into();
+            if range_start > next_start {
+                let length = range_start - next_start;
+                debug_assert!(next_start < range_start);
+                plugs.push(MapRange {
+                    source: Source::from(next_start)..Source::from(range_start),
+                    destination: Destination::from(next_start)
+                        ..Destination::from(next_start) + (length as usize),
+                    length: length as _,
+                    smallest_location: None,
+                })
+            }
+            next_start = range.source.end.into();
+        }
+
+        // Merge and sort.
+        if !plugs.is_empty() {
+            ranges.extend(plugs.into_iter());
+            ranges.sort_by_key(|r| r.source.start);
+        }
+
+        // Fill in the last range. We do this after sorting because it always goes last anyway.
+        let last_range = &ranges[ranges.len() - 1];
+        debug_assert!(last_range.source.end > 0.into());
+
+        let last_range_start = last_range.source.end.into();
+        ranges.push(MapRange {
+            source: Source::from(last_range_start)..Source::from(u64::MAX),
+            destination: Destination::from(next_start)..Destination::from(u64::MAX),
+            length: (u64::MAX - last_range_start) as usize,
+            smallest_location: None,
+        });
+
+        Self { ranges }
+    }
+}
+
+impl<Destination, Source> FromIterator<MapRange<Destination, Source>>
+    for MapRangeSet<Destination, Source>
+where
+    Destination: AlmanacType,
+    Source: AlmanacType,
+{
+    fn from_iter<T: IntoIterator<Item = MapRange<Destination, Source>>>(iter: T) -> Self {
+        let ranges: Vec<MapRange<Destination, Source>> = iter.into_iter().collect();
+        ranges.into()
     }
 }
 
@@ -302,7 +531,7 @@ impl FromStr for Almanac {
             ));
         };
 
-        Ok(Almanac {
+        let mut almanac = Almanac {
             seeds,
             seed_to_soil,
             soil_to_fertilizer,
@@ -311,7 +540,11 @@ impl FromStr for Almanac {
             light_to_temperature,
             temperature_to_humidity,
             humidity_to_location,
-        })
+        };
+
+        almanac.optimize_after_construction();
+
+        Ok(almanac)
     }
 }
 
@@ -460,6 +693,7 @@ mod tests {
 
         let almanac = Almanac::from_str(EXAMPLE).expect("failed to parse almanac");
         assert_eq!(almanac.seeds.len(), 4);
+        /*
         assert_eq!(almanac.seed_to_soil.len(), 4);
         assert_eq!(almanac.soil_to_fertilizer.len(), 4);
         assert_eq!(almanac.fertilizer_to_water.len(), 5);
@@ -467,10 +701,100 @@ mod tests {
         assert_eq!(almanac.light_to_temperature.len(), 5);
         assert_eq!(almanac.temperature_to_humidity.len(), 3);
         assert_eq!(almanac.humidity_to_location.len(), 4);
+        */
 
         assert_eq!(almanac.map_seed(Seed(79)), Location(82));
         assert_eq!(almanac.map_seed(Seed(14)), Location(43));
         assert_eq!(almanac.map_seed(Seed(55)), Location(86));
         assert_eq!(almanac.map_seed(Seed(13)), Location(35));
+    }
+
+    #[test]
+    fn test_slice_range() {
+        let mut range = MapRange::<Soil, Seed>::from_str("50 98 3").expect("failed to parse range");
+        let sliced = range.slice(Soil(51));
+
+        assert_eq!(range.len(), 1);
+        assert_eq!(sliced.len(), 2);
+
+        // The original range starts where it started before.
+        assert_eq!(range.source.start, Seed(98));
+        assert_eq!(range.destination.start, Soil(50));
+
+        // The end is exclusive.
+        assert_eq!(range.source.end, Seed(99));
+        assert_eq!(range.destination.end, Soil(51));
+
+        // The sliced range starts at the (exclusive) end of the previous slice.
+        assert_eq!(sliced.source.start, Seed(99));
+        assert_eq!(sliced.destination.start, Soil(51));
+
+        // The end is exclusive.
+        assert_eq!(sliced.source.end, Seed(101));
+        assert_eq!(sliced.destination.end, Soil(53));
+    }
+
+    #[test]
+    fn test_slice_range_set() {
+        let mut set = MapRangeSet::from(vec![
+            MapRange::<Soil, Seed>::from_str("50 98 3").expect("failed to parse range"),
+            MapRange::<Soil, Seed>::from_str("52 50 48").expect("failed to parse range"),
+        ]);
+
+        assert_eq!(set.len(), 4);
+        assert_eq!(set.ranges[0].source.start, Seed(0));
+        assert_eq!(set.ranges[0].destination.start, Soil(0));
+
+        assert_eq!(set.ranges[1].source.start, Seed(50));
+        assert_eq!(set.ranges[1].destination.start, Soil(52));
+
+        assert_eq!(set.ranges[2].source.start, Seed(98));
+        assert_eq!(set.ranges[2].destination.start, Soil(50));
+
+        assert_eq!(set.ranges[3].source.start, Seed(101));
+        assert_eq!(set.ranges[3].destination.start, Soil(101));
+
+        set.slice(Soil(51));
+        set.sort();
+
+        assert_eq!(set.len(), 5);
+        assert_eq!(set.ranges[0].source.start, Seed(0));
+        assert_eq!(set.ranges[0].destination.start, Soil(0));
+
+        assert_eq!(set.ranges[1].source.start, Seed(50));
+        assert_eq!(set.ranges[1].destination.start, Soil(52));
+
+        assert_eq!(set.ranges[2].source.start, Seed(98));
+        assert_eq!(set.ranges[2].destination.start, Soil(50));
+
+        assert_eq!(set.ranges[3].source.start, Seed(99)); // the sliced one
+        assert_eq!(set.ranges[3].destination.start, Soil(51));
+
+        assert_eq!(set.ranges[4].source.start, Seed(101));
+        assert_eq!(set.ranges[4].destination.start, Soil(101));
+    }
+
+    #[test]
+    fn test_slice_range_set_noop() {
+        let mut set = MapRangeSet::from(vec![
+            MapRange::<Soil, Seed>::from_str("50 98 3").expect("failed to parse range"),
+            MapRange::<Soil, Seed>::from_str("52 50 48").expect("failed to parse range"),
+        ]);
+
+        assert_eq!(set.len(), 4);
+        assert_eq!(set.ranges[0].source.start, Seed(0));
+        assert_eq!(set.ranges[1].source.start, Seed(50));
+        assert_eq!(set.ranges[2].source.start, Seed(98));
+        assert_eq!(set.ranges[3].source.start, Seed(101));
+
+        // This slice should be no-op because it's on an exact destination boundary.
+        set.slice(Soil(50));
+        set.sort();
+
+        assert_eq!(set.len(), 4);
+        assert_eq!(set.ranges[0].source.start, Seed(0));
+        assert_eq!(set.ranges[1].source.start, Seed(50));
+        assert_eq!(set.ranges[2].source.start, Seed(98));
+        assert_eq!(set.ranges[3].source.start, Seed(101));
     }
 }

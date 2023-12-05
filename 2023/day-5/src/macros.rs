@@ -3,26 +3,26 @@ macro_rules! create_type {
     ($type_name:ident) => {
         paste::paste! {
             #[derive(Debug, Copy, Clone, Eq, Ord)]
-            pub struct $type_name(u32);
+            pub struct $type_name(u64);
 
             impl $type_name {
-                pub fn new(value: u32) -> Self {
+                pub fn new(value: u64) -> Self {
                     Self(value)
                 }
 
-                pub fn value(&self) -> u32 {
+                pub fn value(&self) -> u64 {
                     self.0
                 }
             }
 
-            impl From<u32> for $type_name {
-                fn from(value: u32) -> $type_name {
+            impl From<u64> for $type_name {
+                fn from(value: u64) -> $type_name {
                     Self::new(value)
                 }
             }
 
-            impl From<$type_name> for u32 {
-                fn from(value: $type_name) -> u32 {
+            impl From<$type_name> for u64 {
+                fn from(value: $type_name) -> u64 {
                     value.value()
                 }
             }
@@ -65,7 +65,15 @@ macro_rules! create_type {
                 type Output = $type_name;
 
                 fn add(self, value: usize) -> Self::Output {
-                    Self::new((self.0 as usize + value) as u32)
+                    Self::new((self.0 as usize + value) as u64)
+                }
+            }
+
+            impl ::std::ops::Add<u64> for $type_name {
+                type Output = $type_name;
+
+                fn add(self, value: u64) -> Self::Output {
+                    Self::new(self.0 + value)
                 }
             }
 
