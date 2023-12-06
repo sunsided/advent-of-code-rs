@@ -11,7 +11,7 @@ struct ChargeTime(u64);
 struct BoatDistance(u64);
 
 /// Solution to part 1.
-pub fn product_of_winning_conditions(input: &str) -> u64 {
+pub fn product_of_winning_conditions_with_spaces(input: &str) -> u64 {
     let mut lines = input.lines();
 
     let first_line = lines.next().expect("input is empty");
@@ -29,6 +29,33 @@ pub fn product_of_winning_conditions(input: &str) -> u64 {
     let distances: Vec<u64> =
         parse_whitespace_delimited(second_line).expect("unable to parse distances");
 
+    product_of_winning_conditions(times, distances)
+}
+
+/// Solution to part 2.
+pub fn product_of_winning_conditions_without_spaces(input: &str) -> u64 {
+    let mut lines = input.lines();
+
+    let first_line = lines.next().expect("input is empty");
+    if &first_line[..5] != "Time:" {
+        panic!("Invalid input: Missing time")
+    }
+    let first_line = first_line[5..].trim().replace(' ', "");
+    let times: Vec<u64> = parse_whitespace_delimited(&first_line).expect("unable to parse times");
+
+    let second_line = lines.next().expect("input is toos hort");
+    if &second_line[..9] != "Distance:" {
+        panic!("Invalid input: Missing distnances")
+    }
+    let second_line = second_line[9..].trim().replace(' ', "");
+    let distances: Vec<u64> =
+        parse_whitespace_delimited(&second_line).expect("unable to parse distances");
+
+    product_of_winning_conditions(times, distances)
+}
+
+/// Determines the product of all winning conditions fo all games.
+fn product_of_winning_conditions(times: Vec<u64>, distances: Vec<u64>) -> u64 {
     times
         .into_iter()
         .zip(distances)
