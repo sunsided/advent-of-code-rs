@@ -1,8 +1,8 @@
 [package]
-name = "aoc-2023-day-5"
-description = "Advent of Code 2023, Day 5: If You Give A Seed A Fertilizer"
+name = "aoc-2023-day-6"
+description = "Advent of Code 2023, Day 6: Wait for It"
 authors = ["Markus Mayer <github@widemeadows.de>"]
-homepage = "https://adventofcode.com/2023/day/5"
+homepage = "https://adventofcode.com/2023/day/6"
 repository = "https://github.com/sunsided/aoc-rs"
 readme = "README.md"
 license = "EUPL-1.2"
@@ -10,10 +10,8 @@ version = "0.1.0"
 edition = "2021"
 
 [[example]]
-name = "2023-day-5"
+name = "2023-day-6"
 path = "example/main.rs"
 
 [dependencies]
 aoc-utils = { path = "../../utils" }
-itertools = "0.12.0"
-paste = "1.0.14"
