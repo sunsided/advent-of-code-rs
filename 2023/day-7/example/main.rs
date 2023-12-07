@@ -6,10 +6,10 @@ fn main() {
     println!("2023 Day 7: Camel Cards");
     println!(
         "The total winnings without jokes are: {}",
-        total_winnings(INPUT, false)
+        total_winnings(INPUT, Jokers::Disallowed)
     );
     println!(
         "The total winnings with jokes are: {}",
-        total_winnings(INPUT, true)
+        total_winnings(INPUT, Jokers::Allowed)
     );
 }
