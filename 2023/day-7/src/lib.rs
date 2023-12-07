@@ -120,69 +120,19 @@ impl Hand {
 
     /// Determines the hand type when jokers are disallowed.
     fn hand_type_without_jokers(&self) -> HandType {
-        let (counted, highest_count) = self.count_cards();
+        let counted = self.count_cards();
 
-        match counted.len() {
-            // All cards are the same.
-            1 => HandType::FiveOfAKind,
-            // Two distinct group of cards, e.g. `AA8AA` (four of a kind) or `23332` (full house)
-            2 => {
-                if highest_count == 4 {
-                    HandType::FourOfAKind
-                } else {
-                    HandType::FullHouse
-                }
-            }
-            // Three distinct groups, e.g. `TTT98` (three of a kind) or `23432` (two pair)
-            3 => {
-                if highest_count == 3 {
-                    HandType::ThreeOfAKind
-                } else {
-                    HandType::TwoPair
-                }
-            }
-            // One pair and three distinct cards, e.g. `A23A4`.
-            4 => HandType::OnePair,
-            // All cards are different, e.g. `23456`.
-            5 => HandType::HighCard,
-            // No other combination is allowed.
-            _ => unreachable!(),
-        }
+        Self::hand_from_card_count(counted)
     }
 
     /// Determines the hand type when jokers are allowed.
     fn hand_type_with_jokers(&self) -> HandType {
-        let (counted, highest_count) = self.count_cards();
+        let counted = self.count_cards();
 
-        match counted.len() {
-            // All cards are the same.
-            1 => HandType::FiveOfAKind,
-            // Two distinct group of cards, e.g. `AA8AA` (four of a kind) or `23332` (full house)
-            2 => {
-                if highest_count == 4 {
-                    HandType::FourOfAKind
-                } else {
-                    HandType::FullHouse
-                }
-            }
-            // Three distinct groups, e.g. `TTT98` (three of a kind) or `23432` (two pair)
-            3 => {
-                if highest_count == 3 {
-                    HandType::ThreeOfAKind
-                } else {
-                    HandType::TwoPair
-                }
-            }
-            // One pair and three distinct cards, e.g. `A23A4`.
-            4 => HandType::OnePair,
-            // All cards are different, e.g. `23456`.
-            5 => HandType::HighCard,
-            // No other combination is allowed.
-            _ => unreachable!(),
-        }
+        Self::hand_from_card_count(counted)
     }
 
-    fn count_cards(&self) -> (Vec<(Card, usize)>, usize) {
+    fn count_cards(&self) -> Vec<(Card, usize)> {
         let mut counts = [0_usize; Card::NUM_CARDS];
         debug_assert_eq!(Card::A.index(), 12);
         for card in &self.0 {
@@ -191,7 +141,6 @@ impl Hand {
 
         // There are at most five different cards per hand.
         let mut counted = Vec::with_capacity(5);
-        let mut highest_count = 0;
 
         for (card, count) in counts
             .into_iter()
@@ -201,9 +150,39 @@ impl Hand {
             .map(|(index, count)| (Card::from_index(index), count))
         {
             counted.push((card, count));
-            highest_count = highest_count.max(count);
         }
-        (counted, highest_count)
+        counted
+    }
+
+    /// Determines the hand from the card count.
+    fn hand_from_card_count(counted: Vec<(Card, usize)>) -> HandType {
+        let highest_count = counted.iter().map(|(_, count)| *count).max().unwrap_or(0);
+        match counted.len() {
+            // All cards are the same.
+            1 => HandType::FiveOfAKind,
+            // Two distinct group of cards, e.g. `AA8AA` (four of a kind) or `23332` (full house)
+            2 => {
+                if highest_count == 4 {
+                    HandType::FourOfAKind
+                } else {
+                    HandType::FullHouse
+                }
+            }
+            // Three distinct groups, e.g. `TTT98` (three of a kind) or `23432` (two pair)
+            3 => {
+                if highest_count == 3 {
+                    HandType::ThreeOfAKind
+                } else {
+                    HandType::TwoPair
+                }
+            }
+            // One pair and three distinct cards, e.g. `A23A4`.
+            4 => HandType::OnePair,
+            // All cards are different, e.g. `23456`.
+            5 => HandType::HighCard,
+            // No other combination is allowed.
+            _ => unreachable!(),
+        }
     }
 }
 
