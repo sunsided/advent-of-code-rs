@@ -4,16 +4,13 @@ use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::str::FromStr;
 
-/// Solution for part 1.
-pub fn total_winnings(input: &str) -> u64 {
+/// Solution for part 1 and 2.
+pub fn total_winnings(input: &str, allow_jokers: bool) -> u64 {
     let mut games: Vec<_> = input
         .lines()
         .map(|line| Game::from_str(line).expect("invalid input"))
         .collect();
-    games.sort_by(|lhs, rhs| {
-        DisallowJokersHandComparer::from(lhs.hand())
-            .cmp(&DisallowJokersHandComparer::from(rhs.hand()))
-    });
+    games.sort_by(|lhs, rhs| lhs.hand().cmp(rhs.hand(), allow_jokers));
 
     games
         .into_iter()
@@ -83,14 +80,6 @@ pub enum HandType {
     FiveOfAKind,
 }
 
-/// Compares hands according to the rules of part 1 (no jokers).
-#[derive(Eq, PartialEq)]
-struct DisallowJokersHandComparer<'a>(Cow<'a, Hand>);
-
-/// Compares hands according to the rules of part 2 (with jokers).
-#[derive(Eq, PartialEq)]
-struct AllowJokersHandComparer<'a>(Cow<'a, Hand>);
-
 impl Game {
     pub fn hand(&self) -> &Hand {
         &self.0
@@ -102,7 +91,86 @@ impl Game {
 }
 
 impl Hand {
-    pub fn hand_type(&self) -> HandType {
+    /// Compares this hand to another hand.
+    pub fn cmp(&self, other: &Self, allow_jokers: bool) -> Ordering {
+        // First rule: The higher hand type wins.
+        let hand = self
+            .hand_type(allow_jokers)
+            .cmp(&other.hand_type(allow_jokers));
+        if hand != Ordering::Equal {
+            return hand;
+        }
+
+        // Second rule: For identical hands, the first larger card determines the outcome.
+        self.0
+            .iter()
+            .zip(other.0)
+            .map(|(lhs, rhs)| lhs.cmp(&rhs))
+            .find(|&ordering| ordering != Ordering::Equal)
+            .unwrap_or(Ordering::Equal)
+    }
+
+    /// Determines the hand type with or without allowing jokers.
+    pub fn hand_type(&self, allow_jokers: bool) -> HandType {
+        if allow_jokers {
+            self.hand_type_with_jokers()
+        } else {
+            self.hand_type_without_jokers()
+        }
+    }
+
+    /// Determines the hand type when jokers are disallowed.
+    fn hand_type_without_jokers(&self) -> HandType {
+        let mut counts = [0_usize; Card::CARDS.len()];
+        debug_assert_eq!(Card::A.index(), 12);
+        for card in &self.0 {
+            counts[card.index()] += 1;
+        }
+
+        let mut counted = Vec::with_capacity(5);
+        let mut highest_count = 0;
+
+        for (card, count) in counts
+            .into_iter()
+            .rev()
+            .enumerate()
+            .filter(|(_, count)| *count > 0)
+            .map(|(index, count)| (Card::from_index(index), count))
+        {
+            counted.push((card, count));
+            highest_count = highest_count.max(count);
+        }
+
+        match counted.len() {
+            // All cards are the same.
+            1 => HandType::FiveOfAKind,
+            // Two distinct group of cards, e.g. `AA8AA` (four of a kind) or `23332` (full house)
+            2 => {
+                if highest_count == 4 {
+                    HandType::FourOfAKind
+                } else {
+                    HandType::FullHouse
+                }
+            }
+            // Three distinct groups, e.g. `TTT98` (three of a kind) or `23432` (two pair)
+            3 => {
+                if highest_count == 3 {
+                    HandType::ThreeOfAKind
+                } else {
+                    HandType::TwoPair
+                }
+            }
+            // One pair and three distinct cards, e.g. `A23A4`.
+            4 => HandType::OnePair,
+            // All cards are different, e.g. `23456`.
+            5 => HandType::HighCard,
+            // No other combination is allowed.
+            _ => unreachable!(),
+        }
+    }
+
+    /// Determines the hand type when jokers are allowed.
+    fn hand_type_with_jokers(&self) -> HandType {
         let mut counts = [0_usize; Card::CARDS.len()];
         debug_assert_eq!(Card::A.index(), 12);
         for card in &self.0 {
@@ -191,49 +259,6 @@ impl Card {
     /// Returns a card corresponding to its index.
     fn from_index(index: usize) -> Card {
         Self::CARDS[index]
-    }
-}
-
-impl<'a> From<&'a Hand> for DisallowJokersHandComparer<'a> {
-    fn from(value: &'a Hand) -> Self {
-        Self(Cow::Borrowed(value))
-    }
-}
-
-impl<'a> From<Hand> for DisallowJokersHandComparer<'a> {
-    fn from(value: Hand) -> Self {
-        Self(Cow::Owned(value))
-    }
-}
-
-impl<'a> DisallowJokersHandComparer<'a> {
-    fn hand(&'a self) -> &'a Hand {
-        &self.0
-    }
-}
-
-impl<'a> Ord for DisallowJokersHandComparer<'a> {
-    fn cmp(&self, other: &Self) -> Ordering {
-        // First rule: The higher hand type wins.
-        let hand = self.hand().hand_type().cmp(&other.hand().hand_type());
-        if hand != Ordering::Equal {
-            return hand;
-        }
-
-        // Second rule: For identical hands, the first larger card determines the outcome.
-        self.hand()
-            .0
-            .iter()
-            .zip(other.hand().0)
-            .map(|(lhs, rhs)| lhs.cmp(&rhs))
-            .find(|&ordering| ordering != Ordering::Equal)
-            .unwrap_or(Ordering::Equal)
-    }
-}
-
-impl<'a> PartialOrd for DisallowJokersHandComparer<'a> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
     }
 }
 
@@ -458,7 +483,7 @@ mod tests {
         assert_eq!(
             Hand::from_str("AAAAA")
                 .expect("failed to parse hand")
-                .hand_type(),
+                .hand_type(false),
             HandType::FiveOfAKind
         );
     }
@@ -468,7 +493,7 @@ mod tests {
         assert_eq!(
             Hand::from_str("AA8AA")
                 .expect("failed to parse hand")
-                .hand_type(),
+                .hand_type(false),
             HandType::FourOfAKind
         );
     }
@@ -478,7 +503,7 @@ mod tests {
         assert_eq!(
             Hand::from_str("23332")
                 .expect("failed to parse hand")
-                .hand_type(),
+                .hand_type(false),
             HandType::FullHouse
         );
     }
@@ -488,7 +513,7 @@ mod tests {
         assert_eq!(
             Hand::from_str("TTT98")
                 .expect("failed to parse hand")
-                .hand_type(),
+                .hand_type(false),
             HandType::ThreeOfAKind
         );
     }
@@ -498,7 +523,7 @@ mod tests {
         assert_eq!(
             Hand::from_str("23432")
                 .expect("failed to parse hand")
-                .hand_type(),
+                .hand_type(false),
             HandType::TwoPair
         );
     }
@@ -508,7 +533,7 @@ mod tests {
         assert_eq!(
             Hand::from_str("A23A4")
                 .expect("failed to parse hand")
-                .hand_type(),
+                .hand_type(false),
             HandType::OnePair
         );
     }
@@ -518,76 +543,125 @@ mod tests {
         assert_eq!(
             Hand::from_str("23456")
                 .expect("failed to parse hand")
-                .hand_type(),
+                .hand_type(false),
             HandType::HighCard
         );
     }
 
     #[test]
     fn test_compare_hands_without_jokers() {
+        const ALLOW_JOKERS: bool = false;
+
         // `33332` starts with a higher card than `2AAAA`.
         assert_eq!(
-            DisallowJokersHandComparer::from(
-                Hand::from_str("33332").expect("failed to parse hand")
-            )
-            .cmp(&DisallowJokersHandComparer::from(
-                Hand::from_str("2AAAA").expect("failed to parse hand")
-            )),
+            Hand::from_str("33332").expect("failed to parse hand").cmp(
+                &Hand::from_str("2AAAA").expect("failed to parse hand"),
+                ALLOW_JOKERS
+            ),
             Ordering::Greater
         );
 
         // Same as before but reversing the comparison.
         assert_eq!(
-            DisallowJokersHandComparer::from(
-                Hand::from_str("2AAAA").expect("failed to parse hand")
-            )
-            .cmp(&DisallowJokersHandComparer::from(
-                Hand::from_str("33332").expect("failed to parse hand")
-            )),
+            Hand::from_str("2AAAA").expect("failed to parse hand").cmp(
+                &Hand::from_str("33332").expect("failed to parse hand"),
+                ALLOW_JOKERS
+            ),
             Ordering::Less
         );
 
-        // `77788` starts with a lower card than `77888`.
+        // `777JJ` starts with a lower card than `77888`.
         assert_eq!(
-            DisallowJokersHandComparer::from(
-                Hand::from_str("77788").expect("failed to parse hand")
-            )
-            .cmp(&DisallowJokersHandComparer::from(
-                Hand::from_str("77888").expect("failed to parse hand")
-            )),
+            Hand::from_str("777JJ").expect("failed to parse hand").cmp(
+                &Hand::from_str("77888").expect("failed to parse hand"),
+                ALLOW_JOKERS
+            ),
             Ordering::Less
         );
 
         // Both inputs are equal.
         assert_eq!(
-            DisallowJokersHandComparer::from(
-                Hand::from_str("32T3K").expect("failed to parse hand")
-            )
-            .cmp(&DisallowJokersHandComparer::from(
-                Hand::from_str("32T3K").expect("failed to parse hand")
-            )),
+            Hand::from_str("32T3K").expect("failed to parse hand").cmp(
+                &Hand::from_str("32T3K").expect("failed to parse hand"),
+                ALLOW_JOKERS
+            ),
             Ordering::Equal
         );
 
         // Five of a kind is better than four of a kind.
         assert_eq!(
-            DisallowJokersHandComparer::from(
-                Hand::from_str("AAAAA").expect("failed to parse hand")
-            )
-            .cmp(&DisallowJokersHandComparer::from(
-                Hand::from_str("AA8AA").expect("failed to parse hand")
-            )),
+            Hand::from_str("AAAAA").expect("failed to parse hand").cmp(
+                &Hand::from_str("AA8AA").expect("failed to parse hand"),
+                ALLOW_JOKERS
+            ),
             Ordering::Greater
         );
 
         // Full house is better than three of a kind.
         assert_eq!(
-            DisallowJokersHandComparer::from(
-                Hand::from_str("23332").expect("failed to parse hand")
-            )
-            .cmp(&DisallowJokersHandComparer::from(
-                Hand::from_str("TTT98").expect("failed to parse hand")
-            )),
+            Hand::from_str("J333J").expect("failed to parse hand").cmp(
+                &Hand::from_str("TTT98").expect("failed to parse hand"),
+                ALLOW_JOKERS
+            ),
+            Ordering::Greater
+        );
+    }
+
+    #[test]
+    fn test_compare_hands_with_jokers() {
+        const ALLOW_JOKERS: bool = true;
+
+        // `33332` starts with a higher card than `2AAAA`.
+        assert_eq!(
+            Hand::from_str("33332").expect("failed to parse hand").cmp(
+                &Hand::from_str("2AAAA").expect("failed to parse hand"),
+                ALLOW_JOKERS
+            ),
+            Ordering::Greater
+        );
+
+        // Same as before but reversing the comparison.
+        assert_eq!(
+            Hand::from_str("2AAAA").expect("failed to parse hand").cmp(
+                &Hand::from_str("33332").expect("failed to parse hand"),
+                ALLOW_JOKERS
+            ),
+            Ordering::Less
+        );
+
+        // `777JJ` starts with a lower card than `77888`.
+        assert_eq!(
+            Hand::from_str("777JJ").expect("failed to parse hand").cmp(
+                &Hand::from_str("77888").expect("failed to parse hand"),
+                ALLOW_JOKERS
+            ),
+            Ordering::Less
+        );
+
+        // Both inputs are equal.
+        assert_eq!(
+            Hand::from_str("32T3K").expect("failed to parse hand").cmp(
+                &Hand::from_str("32T3K").expect("failed to parse hand"),
+                ALLOW_JOKERS
+            ),
+            Ordering::Equal
+        );
+
+        // Five of a kind is better than four of a kind.
+        assert_eq!(
+            Hand::from_str("AAAAA").expect("failed to parse hand").cmp(
+                &Hand::from_str("AA8AA").expect("failed to parse hand"),
+                ALLOW_JOKERS
+            ),
+            Ordering::Greater
+        );
+
+        // Full house is better than three of a kind.
+        assert_eq!(
+            Hand::from_str("J333J").expect("failed to parse hand").cmp(
+                &Hand::from_str("TTT98").expect("failed to parse hand"),
+                ALLOW_JOKERS
+            ),
             Ordering::Greater
         );
     }
