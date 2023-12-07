@@ -165,42 +165,70 @@ impl Hand {
 
         for (card, count) in counts
             .into_iter()
-            .rev()
             .enumerate()
+            .rev()
             .filter(|(_, count)| *count > 0)
             .map(|(index, count)| (Card::from_index(index), count))
         {
             counted.push((card, count));
         }
+
+        // Sort by count in descending order.
+        counted.sort_by_key(|(_, count)| 5 - *count);
         counted
     }
 
     /// Determines the hand from the card count.
-    fn hand_from_card_count(counted: Vec<(Card, usize)>) -> HandType {
-        let highest_count = counted.iter().map(|(_, count)| *count).max().unwrap_or(0);
-        match counted.len() {
+    ///
+    /// # Arguments
+    /// * `counted` - The counted cards, sorted by count descending (i.e. highest count first).
+    fn hand_from_card_count(mut counted: Vec<(Card, usize)>) -> HandType {
+        let highest_count = counted[0].1;
+
+        // Fiddle around with jokers. If all five cards are jokers, no action is required as
+        // it's a five of a kind either way.
+        if highest_count != 5 {
+            if let Some((joker_index, (_, num_jokers))) = counted
+                .iter()
+                .enumerate()
+                .find(|(_, (card, _))| *card == Card::Joker)
+            {
+                // If the first card is the joker, the best card follows immediately after.
+                let best_index = if joker_index > 0 { 0 } else { 1 };
+
+                // Add the joker count to the best card. This is the optimal strategy, see
+                // comments below for possible scenarios.
+                let (card, count) = counted[best_index];
+                counted[best_index] = (card, count + num_jokers);
+
+                // Remove the joker from the game.
+                counted.remove(joker_index);
+            }
+        }
+
+        match counted.as_slice() {
             // All cards are the same.
-            1 => HandType::FiveOfAKind,
-            // Two distinct group of cards, e.g. `AA8AA` (four of a kind) or `23332` (full house)
-            2 => {
-                if highest_count == 4 {
-                    HandType::FourOfAKind
-                } else {
-                    HandType::FullHouse
-                }
-            }
-            // Three distinct groups, e.g. `TTT98` (three of a kind) or `23432` (two pair)
-            3 => {
-                if highest_count == 3 {
-                    HandType::ThreeOfAKind
-                } else {
-                    HandType::TwoPair
-                }
-            }
+            [(_, 5)] => HandType::FiveOfAKind,
+            // Two distinct group of cards, one of them with four entries, e.g. `AA8AA` (four of a kind)
+            // A single joker makes this a Five of a kind.
+            [(_, 4), (_, 1)] => HandType::FourOfAKind,
+            // Two distinct group of cards, one of them with three entries, e.g. `23332` (full house)
+            // A single joker makes this a four of a kind (4,1).
+            // Two jokers make it a five of a kind (5).
+            [(_, 3), (_, 2)] => HandType::FullHouse,
+            // Three distinct groups, one of them with three cards, e.g. `TTT98` (three of a kind)
+            // A single joker makes this either a four of a kind (4,1 - optimal) or a Full house (3,2).
+            [(_, 3), (_, 1), (_, 1)] => HandType::ThreeOfAKind,
+            // Three distinct groups, two of them with two cards, e.g. `23432` (two pair)
+            // A single joker makes this either a Full house (3,2).
+            // Two jokers make this a Four of a kind (4,1).
+            [(_, 2), (_, 2), (_, 1)] => HandType::TwoPair,
             // One pair and three distinct cards, e.g. `A23A4`.
-            4 => HandType::OnePair,
+            // A single joker makes this a Three of a kind (3,1,1 - optimal) or a Two pair (2,2,1).
+            [(_, 2), (_, 1), (_, 1), (_, 1)] => HandType::OnePair,
             // All cards are different, e.g. `23456`.
-            5 => HandType::HighCard,
+            // A single joker makes this a One pair (4,1,1,1).
+            [(_, 1), (_, 1), (_, 1), (_, 1), (_, 1)] => HandType::HighCard,
             // No other combination is allowed.
             _ => unreachable!(),
         }
