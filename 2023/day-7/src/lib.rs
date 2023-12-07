@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
@@ -9,7 +10,10 @@ pub fn total_winnings(input: &str) -> u64 {
         .lines()
         .map(|line| Game::from_str(line).expect("invalid input"))
         .collect();
-    games.sort_by(|lhs, rhs| lhs.hand().cmp(rhs.hand()));
+    games.sort_by(|lhs, rhs| {
+        DisallowJokersHandComparer::from(lhs.hand())
+            .cmp(&DisallowJokersHandComparer::from(rhs.hand()))
+    });
 
     games
         .into_iter()
@@ -78,6 +82,14 @@ pub enum HandType {
     /// All five cards have the same label, e.g. `AAAAA`.
     FiveOfAKind,
 }
+
+/// Compares hands according to the rules of part 1 (no jokers).
+#[derive(Eq, PartialEq)]
+struct DisallowJokersHandComparer<'a>(Cow<'a, Hand>);
+
+/// Compares hands according to the rules of part 2 (with jokers).
+#[derive(Eq, PartialEq)]
+struct AllowJokersHandComparer<'a>(Cow<'a, Hand>);
 
 impl Game {
     pub fn hand(&self) -> &Hand {
@@ -182,25 +194,44 @@ impl Card {
     }
 }
 
-impl Ord for Hand {
+impl<'a> From<&'a Hand> for DisallowJokersHandComparer<'a> {
+    fn from(value: &'a Hand) -> Self {
+        Self(Cow::Borrowed(value))
+    }
+}
+
+impl<'a> From<Hand> for DisallowJokersHandComparer<'a> {
+    fn from(value: Hand) -> Self {
+        Self(Cow::Owned(value))
+    }
+}
+
+impl<'a> DisallowJokersHandComparer<'a> {
+    fn hand(&'a self) -> &'a Hand {
+        &self.0
+    }
+}
+
+impl<'a> Ord for DisallowJokersHandComparer<'a> {
     fn cmp(&self, other: &Self) -> Ordering {
         // First rule: The higher hand type wins.
-        let hand = self.hand_type().cmp(&other.hand_type());
+        let hand = self.hand().hand_type().cmp(&other.hand().hand_type());
         if hand != Ordering::Equal {
             return hand;
         }
 
         // Second rule: For identical hands, the first larger card determines the outcome.
-        self.0
+        self.hand()
+            .0
             .iter()
-            .zip(other.0)
+            .zip(other.hand().0)
             .map(|(lhs, rhs)| lhs.cmp(&rhs))
             .find(|&ordering| ordering != Ordering::Equal)
             .unwrap_or(Ordering::Equal)
     }
 }
 
-impl PartialOrd for Hand {
+impl<'a> PartialOrd for DisallowJokersHandComparer<'a> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
@@ -493,52 +524,70 @@ mod tests {
     }
 
     #[test]
-    fn test_compare_hands() {
+    fn test_compare_hands_without_jokers() {
         // `33332` starts with a higher card than `2AAAA`.
         assert_eq!(
-            Hand::from_str("33332")
-                .expect("failed to parse hand")
-                .cmp(&Hand::from_str("2AAAA").expect("failed to parse hand")),
+            DisallowJokersHandComparer::from(
+                Hand::from_str("33332").expect("failed to parse hand")
+            )
+            .cmp(&DisallowJokersHandComparer::from(
+                Hand::from_str("2AAAA").expect("failed to parse hand")
+            )),
             Ordering::Greater
         );
 
         // Same as before but reversing the comparison.
         assert_eq!(
-            Hand::from_str("2AAAA")
-                .expect("failed to parse hand")
-                .cmp(&Hand::from_str("33332").expect("failed to parse hand")),
+            DisallowJokersHandComparer::from(
+                Hand::from_str("2AAAA").expect("failed to parse hand")
+            )
+            .cmp(&DisallowJokersHandComparer::from(
+                Hand::from_str("33332").expect("failed to parse hand")
+            )),
             Ordering::Less
         );
 
         // `77788` starts with a lower card than `77888`.
         assert_eq!(
-            Hand::from_str("77788")
-                .expect("failed to parse hand")
-                .cmp(&Hand::from_str("77888").expect("failed to parse hand")),
+            DisallowJokersHandComparer::from(
+                Hand::from_str("77788").expect("failed to parse hand")
+            )
+            .cmp(&DisallowJokersHandComparer::from(
+                Hand::from_str("77888").expect("failed to parse hand")
+            )),
             Ordering::Less
         );
 
         // Both inputs are equal.
         assert_eq!(
-            Hand::from_str("32T3K")
-                .expect("failed to parse hand")
-                .cmp(&Hand::from_str("32T3K").expect("failed to parse hand")),
+            DisallowJokersHandComparer::from(
+                Hand::from_str("32T3K").expect("failed to parse hand")
+            )
+            .cmp(&DisallowJokersHandComparer::from(
+                Hand::from_str("32T3K").expect("failed to parse hand")
+            )),
             Ordering::Equal
         );
 
         // Five of a kind is better than four of a kind.
         assert_eq!(
-            Hand::from_str("AAAAA")
-                .expect("failed to parse hand")
-                .cmp(&Hand::from_str("AA8AA").expect("failed to parse hand")),
+            DisallowJokersHandComparer::from(
+                Hand::from_str("AAAAA").expect("failed to parse hand")
+            )
+            .cmp(&DisallowJokersHandComparer::from(
+                Hand::from_str("AA8AA").expect("failed to parse hand")
+            )),
             Ordering::Greater
         );
 
         // Full house is better than three of a kind.
         assert_eq!(
-            Hand::from_str("23332")
-                .expect("failed to parse hand")
-                .cmp(&Hand::from_str("TTT98").expect("failed to parse hand")),
+            DisallowJokersHandComparer::from(
+                Hand::from_str("23332").expect("failed to parse hand")
+            )
+            .cmp(&DisallowJokersHandComparer::from(
+                Hand::from_str("TTT98").expect("failed to parse hand")
+            )),
             Ordering::Greater
         );
     }
