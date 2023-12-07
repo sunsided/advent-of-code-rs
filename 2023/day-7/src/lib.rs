@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
@@ -121,25 +120,7 @@ impl Hand {
 
     /// Determines the hand type when jokers are disallowed.
     fn hand_type_without_jokers(&self) -> HandType {
-        let mut counts = [0_usize; Card::CARDS.len()];
-        debug_assert_eq!(Card::A.index(), 12);
-        for card in &self.0 {
-            counts[card.index()] += 1;
-        }
-
-        let mut counted = Vec::with_capacity(5);
-        let mut highest_count = 0;
-
-        for (card, count) in counts
-            .into_iter()
-            .rev()
-            .enumerate()
-            .filter(|(_, count)| *count > 0)
-            .map(|(index, count)| (Card::from_index(index), count))
-        {
-            counted.push((card, count));
-            highest_count = highest_count.max(count);
-        }
+        let (counted, highest_count) = self.count_cards();
 
         match counted.len() {
             // All cards are the same.
@@ -171,25 +152,7 @@ impl Hand {
 
     /// Determines the hand type when jokers are allowed.
     fn hand_type_with_jokers(&self) -> HandType {
-        let mut counts = [0_usize; Card::CARDS.len()];
-        debug_assert_eq!(Card::A.index(), 12);
-        for card in &self.0 {
-            counts[card.index()] += 1;
-        }
-
-        let mut counted = Vec::with_capacity(5);
-        let mut highest_count = 0;
-
-        for (card, count) in counts
-            .into_iter()
-            .rev()
-            .enumerate()
-            .filter(|(_, count)| *count > 0)
-            .map(|(index, count)| (Card::from_index(index), count))
-        {
-            counted.push((card, count));
-            highest_count = highest_count.max(count);
-        }
+        let (counted, highest_count) = self.count_cards();
 
         match counted.len() {
             // All cards are the same.
@@ -218,10 +181,36 @@ impl Hand {
             _ => unreachable!(),
         }
     }
+
+    fn count_cards(&self) -> (Vec<(Card, usize)>, usize) {
+        let mut counts = [0_usize; Card::NUM_CARDS];
+        debug_assert_eq!(Card::A.index(), 12);
+        for card in &self.0 {
+            counts[card.index()] += 1;
+        }
+
+        // There are at most five different cards per hand.
+        let mut counted = Vec::with_capacity(5);
+        let mut highest_count = 0;
+
+        for (card, count) in counts
+            .into_iter()
+            .rev()
+            .enumerate()
+            .filter(|(_, count)| *count > 0)
+            .map(|(index, count)| (Card::from_index(index), count))
+        {
+            counted.push((card, count));
+            highest_count = highest_count.max(count);
+        }
+        (counted, highest_count)
+    }
 }
 
 impl Card {
-    const CARDS: [Card; 13] = [
+    const NUM_CARDS: usize = 13;
+
+    const CARDS: [Card; Self::NUM_CARDS] = [
         Card::Two,
         Card::Three,
         Card::Four,
