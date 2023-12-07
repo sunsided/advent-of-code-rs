@@ -12,6 +12,3 @@ edition = "2021"
 [[example]]
 name = "2023-day-7"
 path = "example/main.rs"
-
-[dependencies]
-aoc-utils = { path = "../../utils" }

@@ -56,9 +56,6 @@ dependencies = [
 [[package]]
 name = "aoc-2023-day-7"
 version = "0.1.0"
-dependencies = [
- "aoc-utils",
-]
 
 [[package]]
 name = "aoc-utils"
