@@ -1,7 +1,24 @@
+use std::cmp::Ordering;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::str::FromStr;
 
+/// Solution for part 1.
+pub fn total_winnings(input: &str) -> u64 {
+    let mut games: Vec<_> = input
+        .lines()
+        .map(|line| Game::from_str(line).expect("invalid input"))
+        .collect();
+    games.sort_by(|lhs, rhs| lhs.hand().cmp(rhs.hand()));
+
+    games
+        .into_iter()
+        .enumerate()
+        .map(|(i, game)| (i as u64 + 1) * game.bid().0)
+        .sum()
+}
+
+/// A game consisting of a [`Hand`] and a [`Bid`].
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Game(Hand, Bid);
 
@@ -44,6 +61,24 @@ pub enum Card {
     A,
 }
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub enum HandType {
+    /// All cards' labels are distinct, e.g. `23456`.
+    HighCard,
+    /// two cards share one label, and the other three cards have a different label from the pair and each other, e.g. `A23A4`.
+    OnePair,
+    /// Two cards share one label, two other cards share a second label, and the remaining card has a third label, e.g. `23432`.
+    TwoPair,
+    /// Three cards have the same label, and the remaining two cards are each different from any other card in the hand, e.g. `TTT98`.
+    ThreeOfAKind,
+    /// Three cards have the same label and the remaining cards share a different label, e.g. `23332`.
+    FullHouse,
+    /// Four cards have the same label, e.g. `AA8AA`.
+    FourOfAKind,
+    /// All five cards have the same label, e.g. `AAAAA`.
+    FiveOfAKind,
+}
+
 impl Game {
     pub fn hand(&self) -> &Hand {
         &self.0
@@ -51,6 +86,123 @@ impl Game {
 
     pub fn bid(&self) -> Bid {
         self.1
+    }
+}
+
+impl Hand {
+    pub fn hand_type(&self) -> HandType {
+        let mut counts = [0_usize; Card::CARDS.len()];
+        debug_assert_eq!(Card::A.index(), 12);
+        for card in &self.0 {
+            counts[card.index()] += 1;
+        }
+
+        let mut counted = Vec::with_capacity(5);
+        let mut highest_count = 0;
+
+        for (card, count) in counts
+            .into_iter()
+            .rev()
+            .enumerate()
+            .filter(|(_, count)| *count > 0)
+            .map(|(index, count)| (Card::from_index(index), count))
+        {
+            counted.push((card, count));
+            highest_count = highest_count.max(count);
+        }
+
+        match counted.len() {
+            // All cards are the same.
+            1 => HandType::FiveOfAKind,
+            // Two distinct group of cards, e.g. `AA8AA` (four of a kind) or `23332` (full house)
+            2 => {
+                if highest_count == 4 {
+                    HandType::FourOfAKind
+                } else {
+                    HandType::FullHouse
+                }
+            }
+            // Three distinct groups, e.g. `TTT98` (three of a kind) or `23432` (two pair)
+            3 => {
+                if highest_count == 3 {
+                    HandType::ThreeOfAKind
+                } else {
+                    HandType::TwoPair
+                }
+            }
+            // One pair and three distinct cards, e.g. `A23A4`.
+            4 => HandType::OnePair,
+            // All cards are different, e.g. `23456`.
+            5 => HandType::HighCard,
+            // No other combination is allowed.
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl Card {
+    const CARDS: [Card; 13] = [
+        Card::Two,
+        Card::Three,
+        Card::Four,
+        Card::Five,
+        Card::Six,
+        Card::Seven,
+        Card::Eight,
+        Card::Nine,
+        Card::T,
+        Card::J,
+        Card::Q,
+        Card::K,
+        Card::A,
+    ];
+
+    /// Returns an index corresponding to each card value.
+    fn index(&self) -> usize {
+        match self {
+            Card::Two => 0,
+            Card::Three => 1,
+            Card::Four => 2,
+            Card::Five => 3,
+            Card::Six => 4,
+            Card::Seven => 5,
+            Card::Eight => 6,
+            Card::Nine => 7,
+            Card::T => 8,
+            Card::J => 9,
+            Card::Q => 10,
+            Card::K => 11,
+            Card::A => 12,
+        }
+    }
+
+    /// Returns a card corresponding to its index.
+    fn from_index(index: usize) -> Card {
+        Self::CARDS[index]
+    }
+}
+
+impl Ord for Hand {
+    fn cmp(&self, other: &Self) -> Ordering {
+        // First rule: The higher hand type wins.
+        let hand = self.hand_type().cmp(&other.hand_type());
+        if hand != Ordering::Equal {
+            return hand;
+        }
+
+        // Second rule: For identical hands, the first larger card determines the outcome.
+        self.0
+            .iter()
+            .zip(other.0)
+            .map(|(lhs, rhs)| lhs.cmp(&rhs))
+            .find(|&ordering| ordering != Ordering::Equal)
+            .unwrap_or(Ordering::Equal)
+    }
+}
+
+impl PartialOrd for Hand {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }
 
@@ -191,6 +343,14 @@ mod tests {
     fn test_card_ordering() {
         assert!(Card::A > Card::Two);
         assert_eq!(Card::A, Card::A);
+        assert_ne!(Card::A, Card::K);
+    }
+
+    #[test]
+    fn test_hand_strength_ordering() {
+        assert!(HandType::FiveOfAKind > HandType::HighCard);
+        assert_eq!(HandType::FiveOfAKind, HandType::FiveOfAKind);
+        assert_ne!(HandType::FiveOfAKind, HandType::FourOfAKind);
     }
 
     #[test]
@@ -260,5 +420,126 @@ mod tests {
             &Hand([Card::K, Card::K, Card::Six, Card::Seven, Card::Seven])
         );
         assert_eq!(game.bid(), Bid(28));
+    }
+
+    #[test]
+    fn test_hand_type_five_of_a_kind() {
+        assert_eq!(
+            Hand::from_str("AAAAA")
+                .expect("failed to parse hand")
+                .hand_type(),
+            HandType::FiveOfAKind
+        );
+    }
+
+    #[test]
+    fn test_hand_type_four_of_a_kind() {
+        assert_eq!(
+            Hand::from_str("AA8AA")
+                .expect("failed to parse hand")
+                .hand_type(),
+            HandType::FourOfAKind
+        );
+    }
+
+    #[test]
+    fn test_hand_type_full_house() {
+        assert_eq!(
+            Hand::from_str("23332")
+                .expect("failed to parse hand")
+                .hand_type(),
+            HandType::FullHouse
+        );
+    }
+
+    #[test]
+    fn test_hand_type_three_of_a_kind() {
+        assert_eq!(
+            Hand::from_str("TTT98")
+                .expect("failed to parse hand")
+                .hand_type(),
+            HandType::ThreeOfAKind
+        );
+    }
+
+    #[test]
+    fn test_hand_type_two_pair() {
+        assert_eq!(
+            Hand::from_str("23432")
+                .expect("failed to parse hand")
+                .hand_type(),
+            HandType::TwoPair
+        );
+    }
+
+    #[test]
+    fn test_hand_type_one_pair() {
+        assert_eq!(
+            Hand::from_str("A23A4")
+                .expect("failed to parse hand")
+                .hand_type(),
+            HandType::OnePair
+        );
+    }
+
+    #[test]
+    fn test_hand_type_high_card() {
+        assert_eq!(
+            Hand::from_str("23456")
+                .expect("failed to parse hand")
+                .hand_type(),
+            HandType::HighCard
+        );
+    }
+
+    #[test]
+    fn test_compare_hands() {
+        // `33332` starts with a higher card than `2AAAA`.
+        assert_eq!(
+            Hand::from_str("33332")
+                .expect("failed to parse hand")
+                .cmp(&Hand::from_str("2AAAA").expect("failed to parse hand")),
+            Ordering::Greater
+        );
+
+        // Same as before but reversing the comparison.
+        assert_eq!(
+            Hand::from_str("2AAAA")
+                .expect("failed to parse hand")
+                .cmp(&Hand::from_str("33332").expect("failed to parse hand")),
+            Ordering::Less
+        );
+
+        // `77788` starts with a lower card than `77888`.
+        assert_eq!(
+            Hand::from_str("77788")
+                .expect("failed to parse hand")
+                .cmp(&Hand::from_str("77888").expect("failed to parse hand")),
+            Ordering::Less
+        );
+
+        // Both inputs are equal.
+        assert_eq!(
+            Hand::from_str("32T3K")
+                .expect("failed to parse hand")
+                .cmp(&Hand::from_str("32T3K").expect("failed to parse hand")),
+            Ordering::Equal
+        );
+
+        // Five of a kind is better than four of a kind.
+        assert_eq!(
+            Hand::from_str("AAAAA")
+                .expect("failed to parse hand")
+                .cmp(&Hand::from_str("AA8AA").expect("failed to parse hand")),
+            Ordering::Greater
+        );
+
+        // Full house is better than three of a kind.
+        assert_eq!(
+            Hand::from_str("23332")
+                .expect("failed to parse hand")
+                .cmp(&Hand::from_str("TTT98").expect("failed to parse hand")),
+            Ordering::Greater
+        );
     }
 }
