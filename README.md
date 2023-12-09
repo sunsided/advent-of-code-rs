@@ -11,6 +11,7 @@ Solutions to [Advent of Code], implemented in Rust.
 - 🌱 [Day 5: If You Give A Seed A Fertilizer](2023/day-5)
 - ⛵ [Day 6: Wait for It](2023/day-6)
 - 🐫 [Day 7: Camel Cards](2023/day-7)
+- 🗺️ [Day 8: Haunted Wasteland](2023/day-8)
 
 ## 1=11-2 (2022)
 
