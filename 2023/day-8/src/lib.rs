@@ -37,6 +37,38 @@ pub fn count_steps_to_destination(input: &str) -> usize {
     unreachable!()
 }
 
+pub fn count_ghost_steps_to_destination(input: &str) -> usize {
+    let (directions, nodes) = parse_input(input);
+
+    let mut node_ids: Vec<_> = nodes
+        .keys()
+        .filter(|id| id.is_ghost_start())
+        .copied()
+        .collect();
+
+    // TODO: Use (t)racers: Move the first one as far as possible, count the max distance.
+    //       Then move the next one until it reaches that distance. If it overshoots, set as max distance.
+    //       Repeat with the next one until all have reached the max distance.
+
+    // TODO: Instead of a HashMap convert NodeId to index. "ZZZ" becomes 26 * 100 + 26 * 10 + 26 = 2886.
+
+    for (steps_taken, direction) in directions.iter().enumerate() {
+        // Step simultaneously.
+        let mut goal_reached = true;
+        for node_id in node_ids.iter_mut() {
+            *node_id = nodes[node_id].branch(direction);
+            goal_reached &= node_id.is_ghost_goal();
+        }
+
+        // If all simultaneous steps reached a goal node, finish.
+        if goal_reached {
+            return steps_taken + 1;
+        }
+    }
+
+    unreachable!()
+}
+
 fn parse_input(input: &str) -> (Directions, HashMap<NodeId, Node>) {
     let mut lines = input
         .lines()
@@ -76,8 +108,21 @@ impl Directions {
 }
 
 impl NodeId {
+    /// Marks a start node according to part 1.
     pub const START: NodeId = NodeId(['A', 'A', 'A']);
+
+    /// Marks a goal node according to part 1.
     pub const GOAL: NodeId = NodeId(['Z', 'Z', 'Z']);
+
+    /// Identifies a start node according to part 2.
+    pub fn is_ghost_start(&self) -> bool {
+        self.0[2] == 'A'
+    }
+
+    /// Identifies a goal node according to part 2.
+    pub fn is_ghost_goal(&self) -> bool {
+        self.0[2] == 'Z'
+    }
 }
 
 impl FromStr for Node {
@@ -216,12 +261,44 @@ mod tests {
     fn test_parse_input() {
         const INPUT: &str = "LLR
 
-        AAA = (BBB, BBB)
-        BBB = (AAA, ZZZ)
-        ZZZ = (ZZZ, ZZZ)";
+            AAA = (BBB, BBB)
+            BBB = (AAA, ZZZ)
+            ZZZ = (ZZZ, ZZZ)";
 
         let (directions, nodes) = parse_input(INPUT);
         assert_eq!(directions.0.len(), 3);
         assert_eq!(nodes.len(), 3);
+    }
+
+    #[test]
+    fn test_part_1() {
+        const INPUT: &str = "RL
+
+            AAA = (BBB, CCC)
+            BBB = (DDD, EEE)
+            CCC = (ZZZ, GGG)
+            DDD = (DDD, DDD)
+            EEE = (EEE, EEE)
+            GGG = (GGG, GGG)
+            ZZZ = (ZZZ, ZZZ)
+            ";
+
+        assert_eq!(count_steps_to_destination(INPUT), 2);
+    }
+
+    #[test]
+    fn test_part_2() {
+        const INPUT: &str = "LR
+
+            11A = (11B, XXX)
+            11B = (XXX, 11Z)
+            11Z = (11B, XXX)
+            22A = (22B, XXX)
+            22B = (22C, 22C)
+            22C = (22Z, 22Z)
+            22Z = (22B, 22B)
+            XXX = (XXX, XXX)";
+
+        assert_eq!(count_ghost_steps_to_destination(INPUT), 6);
     }
 }

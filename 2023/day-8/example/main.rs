@@ -8,4 +8,8 @@ fn main() {
         "The total number of steps required from AAA to ZZZ is: {}",
         count_steps_to_destination(INPUT)
     );
+    println!(
+        "The total number of steps required from ..A to ..Z is: {}",
+        count_ghost_steps_to_destination(INPUT)
+    );
 }
