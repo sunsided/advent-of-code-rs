@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+use std::hash::{Hash, Hasher};
 use std::str::FromStr;
 
-#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
-struct NodeId([char; 3]);
+#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq)]
+struct NodeId([char; 3], u16);
 
 #[derive(Debug, Copy, Clone)]
 struct Node {
@@ -46,18 +47,19 @@ pub fn count_ghost_steps_to_destination(input: &str) -> usize {
         .copied()
         .collect();
 
-    // TODO: Use (t)racers: Move the first one as far as possible, count the max distance.
-    //       Then move the next one until it reaches that distance. If it overshoots, set as max distance.
-    //       Repeat with the next one until all have reached the max distance.
-
-    // TODO: Instead of a HashMap convert NodeId to index. "ZZZ" becomes 26 * 100 + 26 * 10 + 26 = 2886.
-
     for (steps_taken, direction) in directions.iter().enumerate() {
         // Step simultaneously.
         let mut goal_reached = true;
+        let mut partial_goal = false;
         for node_id in node_ids.iter_mut() {
             *node_id = nodes[node_id].branch(direction);
-            goal_reached &= node_id.is_ghost_goal();
+            let is_goal = node_id.is_ghost_goal();
+            goal_reached &= is_goal;
+            partial_goal |= is_goal;
+        }
+
+        if partial_goal && !goal_reached {
+            println!("Partial goal after {steps_taken} steps");
         }
 
         // If all simultaneous steps reached a goal node, finish.
@@ -109,10 +111,18 @@ impl Directions {
 
 impl NodeId {
     /// Marks a start node according to part 1.
-    pub const START: NodeId = NodeId(['A', 'A', 'A']);
+    pub const START: NodeId = NodeId(['A', 'A', 'A'], 0);
 
     /// Marks a goal node according to part 1.
-    pub const GOAL: NodeId = NodeId(['Z', 'Z', 'Z']);
+    pub const GOAL: NodeId = NodeId(['Z', 'Z', 'Z'], 25 * 100 + 25 * 10 + 25);
+
+    pub fn new(first: char, second: char, third: char) -> Self {
+        let hash = (first as usize - 'A' as usize) * 100
+            + (second as usize - 'A' as usize) * 10
+            + (third as usize - 'A' as usize);
+        let hash = hash as u16;
+        Self([first, second, third], hash)
+    }
 
     /// Identifies a start node according to part 2.
     pub fn is_ghost_start(&self) -> bool {
@@ -122,6 +132,12 @@ impl NodeId {
     /// Identifies a goal node according to part 2.
     pub fn is_ghost_goal(&self) -> bool {
         self.0[2] == 'Z'
+    }
+}
+
+impl Hash for NodeId {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.1.hash(state)
     }
 }
 
@@ -152,11 +168,11 @@ impl FromStr for NodeId {
         }
 
         let mut chars = s.chars();
-        Ok(Self([
+        Ok(Self::new(
             chars.next().expect("invalid iterator"),
             chars.next().expect("invalid iterator"),
             chars.next().expect("invalid iterator"),
-        ]))
+        ))
     }
 }
 
@@ -222,15 +238,15 @@ mod tests {
     #[test]
     fn test_parse_node_id() {
         let id: NodeId = "ABC".parse().expect("failed to parse node ID");
-        assert_eq!(id, NodeId(['A', 'B', 'C']))
+        assert_eq!(id, NodeId::new('A', 'B', 'C'))
     }
 
     #[test]
     fn test_parse_node() {
         let node: Node = "AAA = (BBB, CCC)".parse().expect("failed to parse node ID");
-        assert_eq!(node.id, NodeId(['A', 'A', 'A']));
-        assert_eq!(node.left, NodeId(['B', 'B', 'B']));
-        assert_eq!(node.right, NodeId(['C', 'C', 'C']));
+        assert_eq!(node.id, NodeId::new('A', 'A', 'A'));
+        assert_eq!(node.left, NodeId::new('B', 'B', 'B'));
+        assert_eq!(node.right, NodeId::new('C', 'C', 'C'));
     }
 
     #[test]
@@ -290,13 +306,13 @@ mod tests {
     fn test_part_2() {
         const INPUT: &str = "LR
 
-            11A = (11B, XXX)
-            11B = (XXX, 11Z)
-            11Z = (11B, XXX)
-            22A = (22B, XXX)
-            22B = (22C, 22C)
-            22C = (22Z, 22Z)
-            22Z = (22B, 22B)
+            FFA = (FFB, XXX)
+            FFB = (XXX, FFZ)
+            FFZ = (FFB, XXX)
+            GGA = (GGB, XXX)
+            GGB = (GGC, GGC)
+            GGC = (GGZ, GGZ)
+            GGZ = (GGB, GGB)
             XXX = (XXX, XXX)";
 
         assert_eq!(count_ghost_steps_to_destination(INPUT), 6);
