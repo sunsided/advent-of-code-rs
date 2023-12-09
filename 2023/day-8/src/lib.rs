@@ -25,8 +25,31 @@ struct Directions(Vec<Direction>);
 
 pub fn count_steps_to_destination(input: &str) -> usize {
     let (directions, nodes) = parse_input(input);
+    count_until_goal(&directions, &nodes, NodeId::START)
+}
 
-    let mut node_id = NodeId::START;
+pub fn count_ghost_steps_to_destination(input: &str) -> usize {
+    let (directions, nodes) = parse_input(input);
+
+    let node_ids: Vec<_> = nodes
+        .keys()
+        .filter(|id| id.is_ghost_start())
+        .copied()
+        .collect();
+
+    let loop_lengths: Vec<usize> = node_ids
+        .iter()
+        .map(|&id| count_until_ghost_goal(&directions, &nodes, id))
+        .collect();
+
+    lcm_vec(loop_lengths)
+}
+
+fn count_until_goal(
+    directions: &Directions,
+    nodes: &HashMap<NodeId, Node>,
+    mut node_id: NodeId,
+) -> usize {
     for (steps_taken, direction) in directions.iter().enumerate() {
         if node_id == NodeId::GOAL {
             return steps_taken;
@@ -35,40 +58,113 @@ pub fn count_steps_to_destination(input: &str) -> usize {
         node_id = nodes[&node_id].branch(direction);
     }
 
-    unreachable!()
+    unreachable!();
 }
 
-pub fn count_ghost_steps_to_destination(input: &str) -> usize {
-    let (directions, nodes) = parse_input(input);
-
-    let mut node_ids: Vec<_> = nodes
-        .keys()
-        .filter(|id| id.is_ghost_start())
-        .copied()
-        .collect();
-
+fn count_until_ghost_goal(
+    directions: &Directions,
+    nodes: &HashMap<NodeId, Node>,
+    mut node_id: NodeId,
+) -> usize {
     for (steps_taken, direction) in directions.iter().enumerate() {
-        // Step simultaneously.
-        let mut goal_reached = true;
-        let mut partial_goal = false;
-        for node_id in node_ids.iter_mut() {
-            *node_id = nodes[node_id].branch(direction);
-            let is_goal = node_id.is_ghost_goal();
-            goal_reached &= is_goal;
-            partial_goal |= is_goal;
+        if node_id.is_ghost_goal() {
+            return steps_taken;
         }
 
-        if partial_goal && !goal_reached {
-            println!("Partial goal after {steps_taken} steps");
-        }
-
-        // If all simultaneous steps reached a goal node, finish.
-        if goal_reached {
-            return steps_taken + 1;
-        }
+        node_id = nodes[&node_id].branch(direction);
     }
 
-    unreachable!()
+    unreachable!();
+}
+
+/// Calculate the greatest common divisor (GCD) of two numbers.
+///
+/// The GCD is the largest positive integer that divides both `a` and `b` without remainder.
+/// This function uses the Euclidean algorithm to calculate the GCD.
+///
+/// # Arguments
+///
+/// * `a` - The first number.
+/// * `b` - The second number.
+///
+/// # Returns
+///
+/// The GCD of `a` and `b`.
+///
+/// # Examples
+///
+/// ```
+/// use aoc_2023_day_8::gcd;
+///
+/// let result = gcd(10, 15);
+/// assert_eq!(result, 5);
+///
+/// let result = gcd(24, 36);
+/// assert_eq!(result, 12);
+/// ```
+///
+pub fn gcd(a: usize, b: usize) -> usize {
+    if b == 0 {
+        a
+    } else {
+        gcd(b, a % b)
+    }
+}
+
+/// Calculates the least common multiple (LCM) of two numbers.
+///
+/// # Arguments
+///
+/// * `a` - A positive integer number.
+/// * `b` - Another positive integer number.
+///
+/// # Returns
+///
+/// The LCM of `a` and `b`.
+///
+/// # Examples
+///
+/// ```
+/// use aoc_2023_day_8::lcm;
+///
+/// let result = lcm(12, 18);
+/// assert_eq!(result, 36);
+/// ```
+pub fn lcm(a: usize, b: usize) -> usize {
+    a / gcd(a, b) * b
+}
+
+/// Calculates the least common multiple (LCM) of a vector of numbers.
+///
+/// The function takes a vector of `usize` numbers and returns their
+/// least common multiple (LCM).
+///
+/// # Arguments
+///
+/// * `numbers` - A vector of `usize` numbers.
+///
+/// # Returns
+///
+/// The LCM of the given numbers.
+///
+/// # Panics
+///
+/// The function will panic if called with an empty vector.
+///
+/// # Examples
+///
+/// ```
+/// use std::iter::FromIterator;
+/// use aoc_2023_day_8::lcm_vec;
+///
+/// let numbers = Vec::from_iter([2, 3, 4, 5]);
+/// let lcm = lcm_vec(numbers);
+/// assert_eq!(lcm, 60);
+/// ```
+pub fn lcm_vec(numbers: Vec<usize>) -> usize {
+    let mut iter = numbers.iter();
+    let &first = iter.next().unwrap();
+    iter.fold(first, |a, &b| lcm(a, b))
 }
 
 fn parse_input(input: &str) -> (Directions, HashMap<NodeId, Node>) {
