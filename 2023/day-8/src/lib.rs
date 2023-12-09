@@ -25,7 +25,7 @@ struct Directions(Vec<Direction>);
 
 pub fn count_steps_to_destination(input: &str) -> usize {
     let (directions, nodes) = parse_input(input);
-    count_until_goal(&directions, &nodes, NodeId::START)
+    count_until(&directions, &nodes, NodeId::START, NodeId::GOAL, 0)
 }
 
 pub fn count_ghost_steps_to_destination(input: &str) -> usize {
@@ -42,16 +42,18 @@ pub fn count_ghost_steps_to_destination(input: &str) -> usize {
         .map(|&id| count_until_ghost_goal(&directions, &nodes, id))
         .collect();
 
-    lcm_vec(loop_lengths)
+    lcm_slice(&loop_lengths)
 }
 
-fn count_until_goal(
+fn count_until(
     directions: &Directions,
     nodes: &HashMap<NodeId, Node>,
     mut node_id: NodeId,
+    goal: NodeId,
+    min_steps: usize,
 ) -> usize {
     for (steps_taken, direction) in directions.iter().enumerate() {
-        if node_id == NodeId::GOAL {
+        if node_id == goal && steps_taken >= min_steps {
             return steps_taken;
         }
 
@@ -155,13 +157,13 @@ pub fn lcm(a: usize, b: usize) -> usize {
 ///
 /// ```
 /// use std::iter::FromIterator;
-/// use aoc_2023_day_8::lcm_vec;
+/// use aoc_2023_day_8::lcm_slice;
 ///
 /// let numbers = Vec::from_iter([2, 3, 4, 5]);
-/// let lcm = lcm_vec(numbers);
+/// let lcm = lcm_slice(&numbers);
 /// assert_eq!(lcm, 60);
 /// ```
-pub fn lcm_vec(numbers: Vec<usize>) -> usize {
+pub fn lcm_slice(numbers: &[usize]) -> usize {
     let mut iter = numbers.iter();
     let &first = iter.next().unwrap();
     iter.fold(first, |a, &b| lcm(a, b))
@@ -202,6 +204,11 @@ impl Node {
 impl Directions {
     pub fn iter(&self) -> impl Iterator<Item = Direction> + '_ {
         self.0.iter().copied().cycle()
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.0.len()
     }
 }
 
@@ -331,6 +338,8 @@ impl Error for ParseNodeIdError {}
 mod tests {
     use super::*;
 
+    const INPUT: &str = include_str!("../input.txt");
+
     #[test]
     fn test_parse_node_id() {
         let id: NodeId = "ABC".parse().expect("failed to parse node ID");
@@ -412,5 +421,72 @@ mod tests {
             XXX = (XXX, XXX)";
 
         assert_eq!(count_ghost_steps_to_destination(INPUT), 6);
+    }
+
+    #[test]
+    fn test_loop_from_start() {
+        let (directions, nodes) = parse_input(INPUT);
+
+        // Find all start nodes.
+        let mut node_ids: Vec<_> = nodes
+            .keys()
+            .filter(|id| id.is_ghost_start())
+            .copied()
+            .collect();
+        node_ids.sort();
+        assert_eq!(node_ids.len(), 6);
+
+        // Determine the length of a cycle from a goal node to its next occurrence.
+        let cycle_lengths: Vec<usize> = node_ids
+            .iter()
+            .map(|&id| count_until_ghost_goal(&directions, &nodes, id))
+            .collect();
+
+        assert_eq!(cycle_lengths[0], 22199); // AAA -> ZZZ
+        assert_eq!(cycle_lengths[1], 13207); // DVA -> XDZ
+        assert_eq!(cycle_lengths[2], 18827); // JHA -> FRZ
+        assert_eq!(cycle_lengths[3], 17141); // NMA -> JFZ
+        assert_eq!(cycle_lengths[4], 14893); // PXA -> LHZ
+        assert_eq!(cycle_lengths[5], 16579); // VXA -> TNZ
+
+        // Path lengths are evenly divisible by the direction length.
+        let direction_length = directions.len();
+        assert_eq!(cycle_lengths[0] % direction_length, 0);
+        assert_eq!(cycle_lengths[1] % direction_length, 0);
+        assert_eq!(cycle_lengths[2] % direction_length, 0);
+        assert_eq!(cycle_lengths[3] % direction_length, 0);
+        assert_eq!(cycle_lengths[4] % direction_length, 0);
+        assert_eq!(cycle_lengths[5] % direction_length, 0);
+
+        assert_eq!(lcm_slice(&cycle_lengths), 13334102464297);
+    }
+
+    #[test]
+    fn test_loop_from_goal() {
+        let (directions, nodes) = parse_input(INPUT);
+
+        // Find all goal nodes.
+        let mut node_ids: Vec<_> = nodes
+            .keys()
+            .filter(|id| id.is_ghost_goal())
+            .copied()
+            .collect();
+        node_ids.sort();
+        assert_eq!(node_ids.len(), 6);
+
+        // Determine the length of a cycle from a goal node to its next occurrence.
+        let cycle_lengths: Vec<usize> = node_ids
+            .iter()
+            .map(|&id| count_until(&directions, &nodes, id, id, 1))
+            .collect();
+
+        assert_eq!(cycle_lengths[0], 18827); // FRZ -> FRZ
+        assert_eq!(cycle_lengths[1], 17141); // JFZ -> JFZ
+        assert_eq!(cycle_lengths[2], 14893); // LHZ -> LHZ
+        assert_eq!(cycle_lengths[3], 16579); // TNZ -> TNZ
+        assert_eq!(cycle_lengths[4], 13207); // XDZ -> XDZ
+        assert_eq!(cycle_lengths[5], 22199); // ZZZ -> ZZZ
+
+        assert_eq!(lcm_slice(&cycle_lengths), 13334102464297);
     }
 }
