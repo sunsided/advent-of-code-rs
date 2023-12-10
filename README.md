@@ -12,6 +12,7 @@ Solutions to [Advent of Code], implemented in Rust.
 - ⛵ [Day 6: Wait for It](2023/day-6)
 - 🐫 [Day 7: Camel Cards](2023/day-7)
 - 🗺️ [Day 8: Haunted Wasteland](2023/day-8)
+- 🏜️ [Day 9: Mirage Maintenance](2023/day-9)
 
 ## 1=11-2 (2022)
 
