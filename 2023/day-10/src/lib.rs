@@ -34,7 +34,7 @@ pub fn part1(input: &str) -> u64 {
 }
 
 /// Solution for part 2.
-pub fn part2(input: &str) -> usize {
+pub fn part2(input: &str, print_map: bool) -> usize {
     let mut map = parse_tiles(input);
 
     // The start lies on a tile. We assume the surrounding tiles connect to it meaningfully
@@ -54,32 +54,60 @@ pub fn part2(input: &str) -> usize {
     let start = Coordinate(start.x() * 2, start.y() * 2);
 
     // Get a starting direction.
-    let (mut current, _) = tile.expand(start);
-    let mut previous = start;
-
-    // Create a map of all tiles that are on the loop.
-    // We will later color it in such that all tiles inside the loop are marked.
-    let mut loop_map: Vec<_> = map
-        .tiles
-        .iter()
-        .map(|&tile| match tile {
-            Tile::Widened => MapState::Widened,
-            _ => MapState::None,
-        })
-        .collect();
-
-    loop_map[map.to_index(start)] = MapState::Loop;
-
-    // Walk the loop, filling in the loop outline on the map.
-    let mut polygon = vec![current];
-    while current != start {
-        loop_map[map.to_index(current)] = MapState::Loop;
-        let next = map.at(current).step(current, previous);
-        polygon.push(next);
-        (current, previous) = (next, current);
-    }
+    let (current, _) = tile.expand(start);
+    let mut loop_map = prepare_loop_map(&map, start, current);
 
     // Flood-fill the outside
+    flood_fill_outside(&map, &mut loop_map);
+
+    // Reduce the map again.
+    let small_loop_map = shrink_loop_map(&map, &loop_map);
+
+    // Print the reduced map.
+    if print_map {
+        print_loop_map(&map, &small_loop_map);
+    }
+
+    // Count the number of remaining spots in the map.
+    let num_in_loop = small_loop_map
+        .iter()
+        .filter(|&state| *state == MapState::None)
+        .count();
+
+    num_in_loop
+}
+
+fn print_loop_map(map: &Map, small_loop_map: &[MapState]) {
+    let mut out = String::new();
+    for l in 0..(map.height / 2) {
+        let line = &small_loop_map[l * (map.width / 2)..(l + 1) * (map.width / 2)];
+        let str = String::from_iter(line.iter().map(|&state| match state {
+            MapState::None => '.',
+            MapState::Loop => '*',
+            MapState::Outside => 'O',
+            MapState::Widened => '~',
+        }));
+        out.push_str(&str);
+        out.push('\n');
+    }
+    println!("{out}");
+}
+
+fn shrink_loop_map(map: &Map, loop_map: &[MapState]) -> Vec<MapState> {
+    let mut small_loop_map = vec![MapState::None; loop_map.len() / 4];
+    for y in (0..map.height).step_by(2) {
+        for x in (0..map.width).step_by(2) {
+            let index = x + y * map.width;
+            let state = loop_map[index];
+
+            let index = (x / 2) + (y * map.width) / 4;
+            small_loop_map[index] = state;
+        }
+    }
+    small_loop_map
+}
+
+fn flood_fill_outside(map: &Map, loop_map: &mut [MapState]) {
     let mut seeds = Vec::new();
     for x in 0..map.width {
         // Top row.
@@ -119,8 +147,7 @@ pub fn part2(input: &str) -> usize {
 
     while let Some(seed) = seeds.pop() {
         // Check north side.
-        if seed.has_north() {
-            let coordinate = seed.north();
+        if let Some(coordinate) = seed.maybe_north() {
             let tile = loop_map[map.to_index(coordinate)];
             if tile == MapState::None || tile == MapState::Widened {
                 loop_map[map.to_index(coordinate)] = MapState::Outside;
@@ -129,8 +156,7 @@ pub fn part2(input: &str) -> usize {
         }
 
         // Check east side.
-        if seed.has_east(&map) {
-            let coordinate = seed.east();
+        if let Some(coordinate) = seed.maybe_east(map) {
             let tile = loop_map[map.to_index(coordinate)];
             if tile == MapState::None || tile == MapState::Widened {
                 loop_map[map.to_index(coordinate)] = MapState::Outside;
@@ -139,8 +165,7 @@ pub fn part2(input: &str) -> usize {
         }
 
         // Check south side.
-        if seed.has_south(&map) {
-            let coordinate = seed.south();
+        if let Some(coordinate) = seed.maybe_south(map) {
             let tile = loop_map[map.to_index(coordinate)];
             if tile == MapState::None || tile == MapState::Widened {
                 loop_map[map.to_index(coordinate)] = MapState::Outside;
@@ -149,8 +174,7 @@ pub fn part2(input: &str) -> usize {
         }
 
         // Check west side.
-        if seed.has_west() {
-            let coordinate = seed.west();
+        if let Some(coordinate) = seed.maybe_west() {
             let tile = loop_map[map.to_index(coordinate)];
             if tile == MapState::None || tile == MapState::Widened {
                 loop_map[map.to_index(coordinate)] = MapState::Outside;
@@ -158,57 +182,30 @@ pub fn part2(input: &str) -> usize {
             }
         }
     }
+}
 
-    let mut out = String::new();
-    for l in 0..map.height {
-        let line = &loop_map[l * map.width..(l + 1) * map.width];
-        let str = String::from_iter(line.iter().map(|&state| match state {
-            MapState::None => '.',
-            MapState::Loop => '*',
-            MapState::Outside => 'O',
-            MapState::Widened => '~',
-        }));
-        out.push_str(&str);
-        out.push('\n');
-    }
+fn prepare_loop_map(map: &Map, start: Coordinate, mut current: Coordinate) -> Vec<MapState> {
+    let mut previous = start;
 
-    println!("{out}");
-
-    // Reduce the map again.
-    let mut small_loop_map = vec![MapState::None; loop_map.len() / 4];
-    for y in (0..map.height).step_by(2) {
-        for x in (0..map.width).step_by(2) {
-            let index = x + y * map.width;
-            let state = loop_map[index];
-
-            let index = (x / 2) + (y * map.width) / 4;
-            small_loop_map[index] = state;
-        }
-    }
-
-    // Print the reduced map.
-    let mut out = String::new();
-    for l in 0..(map.height / 2) {
-        let line = &small_loop_map[l * (map.width / 2)..(l + 1) * (map.width / 2)];
-        let str = String::from_iter(line.iter().map(|&state| match state {
-            MapState::None => '.',
-            MapState::Loop => '*',
-            MapState::Outside => 'O',
-            MapState::Widened => '~',
-        }));
-        out.push_str(&str);
-        out.push('\n');
-    }
-
-    println!("{out}");
-
-    // Count the number of remaining spots in the map.
-    let num_in_loop = small_loop_map
+    // Create a map of all tiles that are on the loop.
+    // We will later color it in such that all tiles inside the loop are marked.
+    let mut loop_map: Vec<_> = map
+        .tiles
         .iter()
-        .filter(|&state| *state == MapState::None)
-        .count();
+        .map(|&tile| match tile {
+            Tile::Widened => MapState::Widened,
+            _ => MapState::None,
+        })
+        .collect();
 
-    num_in_loop
+    // Walk the loop, filling in the loop outline on the map.
+    loop_map[map.to_index(start)] = MapState::Loop;
+    while current != start {
+        loop_map[map.to_index(current)] = MapState::Loop;
+        let next = map.at(current).step(current, previous);
+        (current, previous) = (next, current);
+    }
+    loop_map
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -364,118 +361,58 @@ impl Map {
                         upgrade(new_coordinate, Tile::None);
                     }
                     Tile::Start => {
-                        // Place the tile east to it.
-                        let new_coordinate = base_coordinate.east();
-                        upgrade(new_coordinate, Tile::Widened);
-
-                        // Place the tile south of it.
-                        let new_coordinate = base_coordinate.south();
-                        upgrade(new_coordinate, Tile::Widened);
-
-                        // Place the tile southeast of it.
-                        let new_coordinate = base_coordinate.southeast();
-                        upgrade(new_coordinate, Tile::Widened);
+                        // nothing to do
                     }
                     Tile::NorthSouth => {
                         // Place the tile north to it.
-                        if base_coordinate.has_north() {
-                            let new_coordinate = base_coordinate.north();
+                        if let Some(new_coordinate) = base_coordinate.maybe_north() {
                             upgrade(new_coordinate, Tile::NorthSouth);
                         }
-
-                        // Place the tile east to it.
-                        let new_coordinate = base_coordinate.east();
-                        upgrade(new_coordinate, Tile::Widened);
 
                         // Place the tile south of it.
                         let new_coordinate = base_coordinate.south();
                         upgrade(new_coordinate, Tile::NorthSouth);
-
-                        // Place the tile southeast of it.
-                        let new_coordinate = base_coordinate.southeast();
-                        upgrade(new_coordinate, Tile::Widened);
                     }
                     Tile::WestEast => {
                         // Place the tile west to it.
-                        if base_coordinate.has_west() {
-                            let new_coordinate = base_coordinate.west();
+                        if let Some(new_coordinate) = base_coordinate.maybe_west() {
                             upgrade(new_coordinate, Tile::WestEast);
                         }
 
                         // Place the tile east to it.
                         let new_coordinate = base_coordinate.east();
                         upgrade(new_coordinate, Tile::WestEast);
-
-                        // Place the tile south of it.
-                        let new_coordinate = base_coordinate.south();
-                        upgrade(new_coordinate, Tile::Widened);
-
-                        // Place the tile southeast of it.
-                        let new_coordinate = base_coordinate.southeast();
-                        upgrade(new_coordinate, Tile::Widened);
                     }
                     Tile::NorthEast => {
                         // Place the tile north to it.
-                        if base_coordinate.has_north() {
-                            let new_coordinate = base_coordinate.north();
+                        if let Some(new_coordinate) = base_coordinate.maybe_north() {
                             upgrade(new_coordinate, Tile::NorthSouth);
                         }
 
                         // Place the tile east to it.
                         let new_coordinate = base_coordinate.east();
                         upgrade(new_coordinate, Tile::WestEast);
-
-                        // Place the tile south of it.
-                        let new_coordinate = base_coordinate.south();
-                        upgrade(new_coordinate, Tile::Widened);
-
-                        // Place the tile southeast of it.
-                        let new_coordinate = base_coordinate.southeast();
-                        upgrade(new_coordinate, Tile::Widened);
                     }
                     Tile::NorthWest => {
                         // Place the tile north to it.
-                        if base_coordinate.has_north() {
-                            let new_coordinate = base_coordinate.north();
+                        if let Some(new_coordinate) = base_coordinate.maybe_north() {
                             upgrade(new_coordinate, Tile::NorthSouth);
                         }
 
                         // Place the tile west to it.
-                        if base_coordinate.has_west() {
-                            let new_coordinate = base_coordinate.west();
+                        if let Some(new_coordinate) = base_coordinate.maybe_west() {
                             upgrade(new_coordinate, Tile::WestEast);
                         }
-
-                        // Place the tile east to it.
-                        let new_coordinate = base_coordinate.east();
-                        upgrade(new_coordinate, Tile::Widened);
-
-                        // Place the tile south of it.
-                        let new_coordinate = base_coordinate.south();
-                        upgrade(new_coordinate, Tile::Widened);
-
-                        // Place the tile southeast of it.
-                        let new_coordinate = base_coordinate.southeast();
-                        upgrade(new_coordinate, Tile::Widened);
                     }
                     Tile::SouthWest => {
                         // Place the tile west to it.
-                        if base_coordinate.has_west() {
-                            let new_coordinate = base_coordinate.west();
+                        if let Some(new_coordinate) = base_coordinate.maybe_west() {
                             upgrade(new_coordinate, Tile::WestEast);
                         }
-
-                        // Place the tile east to it.
-                        let new_coordinate = base_coordinate.east();
-                        upgrade(new_coordinate, Tile::Widened);
 
                         // Place the tile south of it.
                         let new_coordinate = base_coordinate.south();
                         upgrade(new_coordinate, Tile::NorthSouth);
-
-                        // Place the tile southeast of it.
-                        let new_coordinate = base_coordinate.southeast();
-                        upgrade(new_coordinate, Tile::Widened);
                     }
                     Tile::SouthEast => {
                         // Place the tile east to it.
@@ -485,10 +422,6 @@ impl Map {
                         // Place the tile south of it.
                         let new_coordinate = base_coordinate.south();
                         upgrade(new_coordinate, Tile::NorthSouth);
-
-                        // Place the tile southeast of it.
-                        let new_coordinate = base_coordinate.southeast();
-                        upgrade(new_coordinate, Tile::Widened);
                     }
                     Tile::Widened => unreachable!(),
                 };
@@ -526,6 +459,38 @@ impl Coordinate {
 
     pub fn has_east(&self, map: &Map) -> bool {
         self.0 < map.width - 1
+    }
+
+    pub fn maybe_north(&self) -> Option<Coordinate> {
+        if self.has_north() {
+            Some(self.north())
+        } else {
+            None
+        }
+    }
+
+    pub fn maybe_west(&self) -> Option<Coordinate> {
+        if self.has_west() {
+            Some(self.west())
+        } else {
+            None
+        }
+    }
+
+    pub fn maybe_east(&self, map: &Map) -> Option<Coordinate> {
+        if self.has_east(map) {
+            Some(self.east())
+        } else {
+            None
+        }
+    }
+
+    pub fn maybe_south(&self, map: &Map) -> Option<Coordinate> {
+        if self.has_south(map) {
+            Some(self.south())
+        } else {
+            None
+        }
     }
 
     pub fn is_north_of(&self, other: &Coordinate) -> bool {
@@ -795,7 +760,7 @@ mod tests {
             .L--J.L--J.
             ...........";
 
-        assert_eq!(part2(TEST), 4);
+        assert_eq!(part2(TEST, false), 4);
     }
 
     #[test]
@@ -811,7 +776,7 @@ mod tests {
             ....FJL-7.||.||||...
             ....L---J.LJ.LJLJ...";
 
-        assert_eq!(part2(TEST), 8);
+        assert_eq!(part2(TEST, false), 8);
     }
 
     #[test]
@@ -827,13 +792,13 @@ mod tests {
             L.L7LFJ|||||FJL7||LJ
             L7JLJL-JLJLJL--JLJ.L";
 
-        assert_eq!(part2(TEST), 10);
+        assert_eq!(part2(TEST, false), 10);
     }
 
     #[test]
     fn test_part2_real() {
         const TEST: &str = include_str!("../input.txt");
-        assert_ne!(part2(TEST), 357);
+        assert_ne!(part2(TEST, false), 357);
     }
 
     #[test]

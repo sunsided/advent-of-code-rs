@@ -8,5 +8,5 @@ fn main() {
         "The furthest number of steps from the start in either direction: {}",
         part1(INPUT)
     );
-    println!("Number of tiles inside the loop: {}", part2(INPUT));
+    println!("Number of tiles inside the loop: {}", part2(INPUT, false));
 }
