@@ -47,11 +47,71 @@ pub fn part2(input: &str) -> usize {
     let start_tile_index = map.to_index(start);
     map.tiles[start_tile_index] = tile;
 
+    // Get a starting direction.
+    let (mut current, _) = tile.expand(start);
+    let mut previous = start;
+
+    // Walk the loop, filling in the loop outline on the map.
+    let mut polygon = vec![(start.0 as f32 + 0.0f32, start.1 as f32 + 0.0f32)];
+    while current != start {
+        let next = map.at(current).step(current, previous);
+        polygon.push((next.0 as f32 + 0.0f32, next.1 as f32 + 0.0f32));
+        (current, previous) = (next, current);
+    }
+
+    let mut lol = 0;
+    for i in 0..map.tiles.len() {
+        let y = i / map.width;
+        let x = i % map.width;
+
+        let point = map.at(Coordinate(x, y));
+        if point != Tile::None {
+            continue;
+        }
+
+        if is_point_in_polygon((x as f32, y as f32), &polygon) {
+            lol += 1;
+        }
+    }
+
+    println!("Path length: {}", polygon.len());
+    println!("Lol: {lol}");
+
     // Widen the map.
     let map = map.widen();
 
     // Obtain the start position in the widened map.
     let start = Coordinate(start.x() * 2, start.y() * 2);
+
+    // Get a starting direction.
+    let (mut current, _) = tile.expand(start);
+    let mut previous = start;
+
+    // Walk the loop, filling in the loop outline on the map.
+    let mut polygon = vec![(start.0 as f32 + 0.5f32, start.1 as f32 + 0.5f32)];
+    while current != start {
+        let next = map.at(current).step(current, previous);
+        polygon.push((next.0 as f32 + 0.5f32, next.1 as f32 + 0.5f32));
+        (current, previous) = (next, current);
+    }
+
+    let mut lol = 0;
+    for i in 0..map.tiles.len() {
+        let y = i / map.width;
+        let x = i % map.width;
+
+        let point = map.at(Coordinate(x, y));
+        if point != Tile::None && point != Tile::Widened {
+            continue;
+        }
+
+        if is_point_in_polygon((x as f32, y as f32), &polygon) {
+            lol += 1;
+        }
+    }
+
+    println!("Path length: {}", polygon.len());
+    println!("Lol: {lol}");
 
     // Get a starting direction.
     let (mut current, _) = tile.expand(start);
@@ -71,9 +131,11 @@ pub fn part2(input: &str) -> usize {
     loop_map[map.to_index(start)] = MapState::Loop;
 
     // Walk the loop, filling in the loop outline on the map.
+    let mut polygon = vec![current];
     while current != start {
         loop_map[map.to_index(current)] = MapState::Loop;
         let next = map.at(current).step(current, previous);
+        polygon.push(next);
         (current, previous) = (next, current);
     }
 
@@ -207,6 +269,23 @@ pub fn part2(input: &str) -> usize {
         .count();
 
     num_in_loop
+}
+
+pub fn is_point_in_polygon(p: (f32, f32), polygon: &[(f32, f32)]) -> bool {
+    let mut is_inside = false;
+    let mut j = polygon.len() - 1;
+    for i in 0..polygon.len() {
+        if ((polygon[i].1 > p.1) != (polygon[j].1 > p.1))
+            && (p.0
+                <= (polygon[j].0 - polygon[i].0) * (p.1 - polygon[i].1)
+                    / (polygon[j].1 - polygon[i].1)
+                    + polygon[i].0)
+        {
+            is_inside = !is_inside;
+        }
+        j = i;
+    }
+    is_inside
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
