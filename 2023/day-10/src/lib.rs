@@ -1,5 +1,6 @@
 use std::borrow::Borrow;
 use std::fmt::{Display, Formatter};
+use std::ops::{Deref, DerefMut};
 
 /// Solution for part 1.
 pub fn part1(input: &str) -> u64 {
@@ -65,7 +66,7 @@ pub fn part2(input: &str, print_map: bool) -> usize {
 
     // Print the reduced map.
     if print_map {
-        print_loop_map(&map, &small_loop_map);
+        print_final_loop_map(&map, &small_loop_map);
     }
 
     // Count the number of remaining spots in the map.
@@ -77,7 +78,7 @@ pub fn part2(input: &str, print_map: bool) -> usize {
     num_in_loop
 }
 
-fn prepare_loop_map(map: &Map, start: Coordinate, mut current: Coordinate) -> Vec<MapState> {
+fn prepare_loop_map(map: &WidenedMap, start: Coordinate, mut current: Coordinate) -> Vec<MapState> {
     let mut previous = start;
 
     // Create a map of all tiles that are on the loop.
@@ -101,7 +102,7 @@ fn prepare_loop_map(map: &Map, start: Coordinate, mut current: Coordinate) -> Ve
     loop_map
 }
 
-fn flood_fill_outside(map: &Map, loop_map: &mut [MapState]) {
+fn flood_fill_outside(map: &WidenedMap, loop_map: &mut [MapState]) {
     let mut seeds = Vec::new();
     for x in 0..map.width {
         // Top row.
@@ -185,7 +186,7 @@ fn flood_fill_outside(map: &Map, loop_map: &mut [MapState]) {
     }
 }
 
-fn shrink_loop_map(map: &Map, loop_map: &[MapState]) -> Vec<MapState> {
+fn shrink_loop_map(map: &WidenedMap, loop_map: &[MapState]) -> Vec<MapState> {
     let mut small_loop_map = vec![MapState::None; loop_map.len() / 4];
     for y in (0..map.height).step_by(2) {
         for x in (0..map.width).step_by(2) {
@@ -199,15 +200,15 @@ fn shrink_loop_map(map: &Map, loop_map: &[MapState]) -> Vec<MapState> {
     small_loop_map
 }
 
-fn print_loop_map(map: &Map, small_loop_map: &[MapState]) {
+fn print_final_loop_map(map: &Map, small_loop_map: &[MapState]) {
     let mut out = String::new();
     for l in 0..(map.height / 2) {
         let line = &small_loop_map[l * (map.width / 2)..(l + 1) * (map.width / 2)];
         let str = String::from_iter(line.iter().map(|&state| match state {
-            MapState::None => '.',
+            MapState::None => 'I',
             MapState::Loop => '*',
             MapState::Outside => 'O',
-            MapState::Widened => '~',
+            MapState::Widened => unreachable!(),
         }));
         out.push_str(&str);
         out.push('\n');
@@ -246,6 +247,8 @@ struct Map {
     height: usize,
 }
 
+struct WidenedMap(Map);
+
 fn parse_tiles(input: &str) -> Map {
     let mut tiles = Vec::with_capacity(input.len());
     let mut num_lines = 0;
@@ -254,15 +257,6 @@ fn parse_tiles(input: &str) -> Map {
         .map(|line| line.trim())
         .filter(|&line| !line.is_empty())
     {
-        /*
-        if tiles.is_empty() {
-            tiles.push(Tile::None);
-            tiles.extend((0..line.len()).map(|_| Tile::None));
-            num_lines += 1;
-        }
-        */
-
-        // tiles.push(Tile::None);
         tiles.extend(line.chars().map(Tile::from));
         num_lines += 1;
     }
@@ -331,172 +325,62 @@ impl Map {
         panic!("Unexpected combination of tiles")
     }
 
-    fn widen(&self) -> Map {
-        let mut tiles = vec![Tile::Widened; self.tiles.len() * 4];
+    fn widen(&self) -> WidenedMap {
+        self.into()
+    }
+}
 
-        let new_width = self.width * 2;
-        let to_index =
-            |coordinate: Coordinate| -> usize { coordinate.x() + coordinate.y() * new_width };
+impl WidenedMap {
+    fn to_index(&self, coordinate: Coordinate) -> usize {
+        coordinate.x() + coordinate.y() * self.width
+    }
 
-        let upgrade = |coordinate: Coordinate, new: Tile, tiles: &mut [Tile]| {
-            let tile = &mut tiles[to_index(coordinate)];
-            if *tile == Tile::Widened {
-                *tile = new;
-            }
-        };
+    fn upgrade(&mut self, coordinate: Coordinate, new: Tile) {
+        let index = self.to_index(coordinate);
+        let tile = &mut self.tiles[index];
+        if *tile == Tile::Widened {
+            *tile = new;
+        }
+    }
 
-        let connects_north = |coordinate: Coordinate, tiles: &[Tile]| {
-            if coordinate.1 < 2 {
-                return false;
-            }
-
-            let tile = tiles[to_index(coordinate)];
-            let other = tiles[to_index(Coordinate(coordinate.0, coordinate.1 - 2))];
-            tile.connects_north() && other.connects_south()
-        };
-
-        let connects_west = |coordinate: Coordinate, tiles: &[Tile]| {
-            if coordinate.0 < 2 {
-                return false;
-            }
-
-            let tile = tiles[to_index(coordinate)];
-            let other = tiles[to_index(Coordinate(coordinate.0 - 2, coordinate.1))];
-            tile.connects_west() && other.connects_east()
-        };
-
-        let connects_east = |coordinate: Coordinate, tiles: &[Tile]| {
-            if coordinate.0 > self.width - 2 {
-                return false;
-            }
-
-            let tile = tiles[to_index(coordinate)];
-            let other = tiles[to_index(Coordinate(coordinate.0 + 2, coordinate.1))];
-            tile.connects_east() && other.connects_west()
-        };
-
-        let connects_south = |coordinate: Coordinate, tiles: &[Tile]| {
-            if coordinate.1 > self.height - 2 {
-                return false;
-            }
-
-            let tile = tiles[to_index(coordinate)];
-            let other = tiles[to_index(Coordinate(coordinate.0, coordinate.1 + 2))];
-            tile.connects_south() && other.connects_north()
-        };
-
-        // Fill in the base map.
-        for y in 0..self.height {
-            for x in 0..self.width {
-                let coordinate = Coordinate(x, y);
-                let tile = self.at(coordinate);
-
-                // Place the regular tile.
-                let base_coordinate = Coordinate(x * 2, y * 2);
-                upgrade(base_coordinate, tile, &mut tiles);
-            }
+    fn connects_north(&self, coordinate: Coordinate) -> bool {
+        if coordinate.1 < 2 {
+            return false;
         }
 
-        // Fill in the gaps.
-        for y in 0..self.height {
-            for x in 0..self.width {
-                let coordinate = Coordinate(x, y);
-                let tile = self.at(coordinate);
+        let tile = self.tiles[self.to_index(coordinate)];
+        let other = self.tiles[self.to_index(Coordinate(coordinate.0, coordinate.1 - 2))];
+        tile.connects_north() && other.connects_south()
+    }
 
-                let base_coordinate = Coordinate(x * 2, y * 2);
-                match tile {
-                    Tile::None => {
-                        // Place the tile east to it.
-                        let new_coordinate = base_coordinate.east();
-                        upgrade(new_coordinate, Tile::None, &mut tiles);
-
-                        // Place the tile south of it.
-                        let new_coordinate = base_coordinate.south();
-                        upgrade(new_coordinate, Tile::None, &mut tiles);
-
-                        // Place the tile southeast of it.
-                        let new_coordinate = base_coordinate.southeast();
-                        upgrade(new_coordinate, Tile::None, &mut tiles);
-                    }
-                    Tile::Start => {
-                        // nothing to do
-                    }
-                    Tile::NorthSouth => {
-                        // Place the tile north to it.
-                        if connects_north(base_coordinate, &tiles) {
-                            upgrade(base_coordinate.north(), Tile::NorthSouth, &mut tiles);
-                        }
-
-                        // Place the tile south of it.
-                        if connects_south(base_coordinate, &tiles) {
-                            upgrade(base_coordinate.south(), Tile::NorthSouth, &mut tiles);
-                        }
-                    }
-                    Tile::WestEast => {
-                        // Place the tile west to it.
-                        if connects_west(base_coordinate, &tiles) {
-                            upgrade(base_coordinate.west(), Tile::WestEast, &mut tiles);
-                        }
-
-                        // Place the tile east to it.
-                        if connects_east(base_coordinate, &tiles) {
-                            upgrade(base_coordinate.east(), Tile::WestEast, &mut tiles);
-                        }
-                    }
-                    Tile::NorthEast => {
-                        // Place the tile north to it.
-                        if connects_north(base_coordinate, &tiles) {
-                            upgrade(base_coordinate.north(), Tile::NorthSouth, &mut tiles);
-                        }
-
-                        // Place the tile east to it.
-                        if connects_east(base_coordinate, &tiles) {
-                            upgrade(base_coordinate.east(), Tile::WestEast, &mut tiles);
-                        }
-                    }
-                    Tile::NorthWest => {
-                        // Place the tile north to it.
-                        if connects_north(base_coordinate, &tiles) {
-                            upgrade(base_coordinate.north(), Tile::NorthSouth, &mut tiles);
-                        }
-
-                        // Place the tile west to it.
-                        if connects_west(base_coordinate, &tiles) {
-                            upgrade(base_coordinate.west(), Tile::WestEast, &mut tiles);
-                        }
-                    }
-                    Tile::SouthWest => {
-                        // Place the tile west to it.
-                        if connects_west(base_coordinate, &tiles) {
-                            upgrade(base_coordinate.west(), Tile::WestEast, &mut tiles);
-                        }
-
-                        // Place the tile south of it.
-                        if connects_south(base_coordinate, &tiles) {
-                            upgrade(base_coordinate.south(), Tile::NorthSouth, &mut tiles);
-                        }
-                    }
-                    Tile::SouthEast => {
-                        // Place the tile east to it.
-                        if connects_east(base_coordinate, &tiles) {
-                            upgrade(base_coordinate.east(), Tile::WestEast, &mut tiles);
-                        }
-
-                        // Place the tile south of it.
-                        if connects_south(base_coordinate, &tiles) {
-                            upgrade(base_coordinate.south(), Tile::NorthSouth, &mut tiles);
-                        }
-                    }
-                    Tile::Widened => unreachable!(),
-                };
-            }
+    fn connects_west(&self, coordinate: Coordinate) -> bool {
+        if coordinate.0 < 2 {
+            return false;
         }
 
-        Map {
-            tiles,
-            width: self.width * 2,
-            height: self.height * 2,
+        let tile = self.tiles[self.to_index(coordinate)];
+        let other = self.tiles[self.to_index(Coordinate(coordinate.0 - 2, coordinate.1))];
+        tile.connects_west() && other.connects_east()
+    }
+
+    fn connects_south(&self, coordinate: Coordinate) -> bool {
+        if coordinate.1 >= self.height - 2 {
+            return false;
         }
+
+        let tile = self.tiles[self.to_index(coordinate)];
+        let other = self.tiles[self.to_index(Coordinate(coordinate.0, coordinate.1 + 2))];
+        tile.connects_south() && other.connects_north()
+    }
+
+    fn connects_east(&self, coordinate: Coordinate) -> bool {
+        if coordinate.0 >= self.width - 2 {
+            return false;
+        }
+
+        let tile = self.tiles[self.to_index(coordinate)];
+        let other = self.tiles[self.to_index(Coordinate(coordinate.0 + 2, coordinate.1))];
+        tile.connects_east() && other.connects_west()
     }
 }
 
@@ -739,6 +623,143 @@ impl Tile {
                 }
             }
         }
+    }
+}
+
+impl Deref for WidenedMap {
+    type Target = Map;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for WidenedMap {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<M> From<M> for WidenedMap
+where
+    M: Borrow<Map>,
+{
+    fn from(value: M) -> Self {
+        let value = value.borrow();
+        let mut map = WidenedMap(Map {
+            tiles: vec![Tile::Widened; value.tiles.len() * 4],
+            width: value.width * 2,
+            height: value.height * 2,
+        });
+
+        // Fill in the base map.
+        for y in 0..value.height {
+            for x in 0..value.width {
+                let coordinate = Coordinate(x, y);
+                let tile = value.at(coordinate);
+
+                // Place the regular tile.
+                let base_coordinate = Coordinate(x * 2, y * 2);
+                map.upgrade(base_coordinate, tile);
+            }
+        }
+
+        // Fill in the gaps.
+        for y in 0..value.height {
+            for x in 0..value.width {
+                let coordinate = Coordinate(x, y);
+                let tile = value.at(coordinate);
+
+                let base_coordinate = Coordinate(x * 2, y * 2);
+                match tile {
+                    Tile::None => {
+                        // Place the tile east to it.
+                        let new_coordinate = base_coordinate.east();
+                        map.upgrade(new_coordinate, Tile::None);
+
+                        // Place the tile south of it.
+                        let new_coordinate = base_coordinate.south();
+                        map.upgrade(new_coordinate, Tile::None);
+
+                        // Place the tile southeast of it.
+                        let new_coordinate = base_coordinate.southeast();
+                        map.upgrade(new_coordinate, Tile::None);
+                    }
+                    Tile::Start => {
+                        // nothing to do
+                    }
+                    Tile::NorthSouth => {
+                        // Place the tile north to it.
+                        if map.connects_north(base_coordinate) {
+                            map.upgrade(base_coordinate.north(), Tile::NorthSouth);
+                        }
+
+                        // Place the tile south of it.
+                        if map.connects_south(base_coordinate) {
+                            map.upgrade(base_coordinate.south(), Tile::NorthSouth);
+                        }
+                    }
+                    Tile::WestEast => {
+                        // Place the tile west to it.
+                        if map.connects_west(base_coordinate) {
+                            map.upgrade(base_coordinate.west(), Tile::WestEast);
+                        }
+
+                        // Place the tile east to it.
+                        if map.connects_east(base_coordinate) {
+                            map.upgrade(base_coordinate.east(), Tile::WestEast);
+                        }
+                    }
+                    Tile::NorthEast => {
+                        // Place the tile north to it.
+                        if map.connects_north(base_coordinate) {
+                            map.upgrade(base_coordinate.north(), Tile::NorthSouth);
+                        }
+
+                        // Place the tile east to it.
+                        if map.connects_east(base_coordinate) {
+                            map.upgrade(base_coordinate.east(), Tile::WestEast);
+                        }
+                    }
+                    Tile::NorthWest => {
+                        // Place the tile north to it.
+                        if map.connects_north(base_coordinate) {
+                            map.upgrade(base_coordinate.north(), Tile::NorthSouth);
+                        }
+
+                        // Place the tile west to it.
+                        if map.connects_west(base_coordinate) {
+                            map.upgrade(base_coordinate.west(), Tile::WestEast);
+                        }
+                    }
+                    Tile::SouthWest => {
+                        // Place the tile west to it.
+                        if map.connects_west(base_coordinate) {
+                            map.upgrade(base_coordinate.west(), Tile::WestEast);
+                        }
+
+                        // Place the tile south of it.
+                        if map.connects_south(base_coordinate) {
+                            map.upgrade(base_coordinate.south(), Tile::NorthSouth);
+                        }
+                    }
+                    Tile::SouthEast => {
+                        // Place the tile east to it.
+                        if map.connects_east(base_coordinate) {
+                            map.upgrade(base_coordinate.east(), Tile::WestEast);
+                        }
+
+                        // Place the tile south of it.
+                        if map.connects_south(base_coordinate) {
+                            map.upgrade(base_coordinate.south(), Tile::NorthSouth);
+                        }
+                    }
+                    Tile::Widened => unreachable!(),
+                };
+            }
+        }
+
+        map
     }
 }
 
