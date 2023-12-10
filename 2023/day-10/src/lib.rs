@@ -35,21 +35,23 @@ pub fn part1(input: &str) -> u64 {
 
 /// Solution for part 2.
 pub fn part2(input: &str) -> usize {
-    let map = parse_tiles(input);
-
-    // println!("{map}");
-
-    // Widen the map.
-    let map = map.widen();
-
-    // println!();
-    // println!("{map}");
+    let mut map = parse_tiles(input);
 
     // The start lies on a tile. We assume the surrounding tiles connect to it meaningfully
     // (i.e. the are no ambiguities). We can allow this assumption because we know the
     // starting position is on a loop, and therefore cannot branch into a dead end.
     let start = map.find_start();
     let tile = map.infer_tile(&start);
+
+    // Replace the start tile.
+    let start_tile_index = map.to_index(start);
+    map.tiles[start_tile_index] = tile;
+
+    // Widen the map.
+    let map = map.widen();
+
+    // Obtain the start position in the widened map.
+    let start = Coordinate(start.x() * 2, start.y() * 2);
 
     // Get a starting direction.
     let (mut current, _) = tile.expand(start);
@@ -155,29 +157,54 @@ pub fn part2(input: &str) -> usize {
         }
     }
 
-    // Count the number of remaining spots in the map. Since we doubled the original
-    // map's width and height (i.e. quadrupled the area), we need to divide by 4.
-    let num_in_loop = loop_map
-        .iter()
-        .filter(|&state| *state == MapState::None)
-        .count()
-        / 4;
-
     let mut out = String::new();
     for l in 0..map.height {
         let line = &loop_map[l * map.width..(l + 1) * map.width];
         let str = String::from_iter(line.iter().map(|&state| match state {
             MapState::None => '.',
             MapState::Loop => '*',
-            MapState::Included => 'I',
             MapState::Outside => 'O',
-            MapState::Widened => 'x',
+            MapState::Widened => '~',
         }));
         out.push_str(&str);
         out.push('\n');
     }
 
     println!("{out}");
+
+    // Reduce the map again.
+    let mut small_loop_map = vec![MapState::None; loop_map.len() / 4];
+    for y in (0..map.height).step_by(2) {
+        for x in (0..map.width).step_by(2) {
+            let index = x + y * map.width;
+            let state = loop_map[index];
+
+            let index = (x / 2) + (y * map.width) / 4;
+            small_loop_map[index] = state;
+        }
+    }
+
+    // Print the reduced map.
+    let mut out = String::new();
+    for l in 0..(map.height / 2) {
+        let line = &small_loop_map[l * (map.width / 2)..(l + 1) * (map.width / 2)];
+        let str = String::from_iter(line.iter().map(|&state| match state {
+            MapState::None => '.',
+            MapState::Loop => '*',
+            MapState::Outside => 'O',
+            MapState::Widened => '~',
+        }));
+        out.push_str(&str);
+        out.push('\n');
+    }
+
+    println!("{out}");
+
+    // Count the number of remaining spots in the map.
+    let num_in_loop = small_loop_map
+        .iter()
+        .filter(|&state| *state == MapState::None)
+        .count();
 
     num_in_loop
 }
@@ -186,7 +213,6 @@ pub fn part2(input: &str) -> usize {
 enum MapState {
     None,
     Loop,
-    Included,
     Outside,
     Widened,
 }
