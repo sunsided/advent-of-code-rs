@@ -33,8 +33,110 @@ pub fn part1(input: &str) -> u64 {
 }
 
 /// Solution for part 2.
-pub fn part2(_input: &str) -> u64 {
-    todo!()
+pub fn part2(input: &str) -> u64 {
+    let map = parse_tiles(input);
+
+    // The start lies on a tile. We assume the surrounding tiles connect to it meaningfully
+    // (i.e. the are no ambiguities). We can allow this assumption because we know the
+    // starting position is on a loop, and therefore cannot branch into a dead end.
+    let start = map.find_start();
+    let tile = map.infer_tile(&start);
+
+    // Get a starting direction.
+    let (mut current, _) = tile.expand(start);
+    let mut previous = start;
+
+    #[derive(Debug, Copy, Clone, Eq, PartialEq)]
+    enum MapState {
+        None,
+        Outline,
+        Included,
+    }
+
+    // Create a map of all tiles that are on the loop.
+    // We will later color it in such that all tiles inside the loop are marked.
+    let mut loop_map = vec![MapState::None; map.tiles.len()];
+    loop_map[map.to_index(start)] = MapState::Outline;
+
+    // Walk the loop, filling in the loop outline on the map.
+    while current != start {
+        loop_map[map.to_index(current)] = MapState::Outline;
+        let next = map.at(current).step(current, previous);
+        (current, previous) = (next, current);
+    }
+
+    let mut out = String::new();
+    for l in 0..map.height {
+        let line = &loop_map[l * map.width..(l + 1) * map.width];
+        let str = String::from_iter(line.iter().map(|&state| match state {
+            MapState::None => '.',
+            MapState::Outline => '*',
+            MapState::Included => 'I',
+        }));
+        out.push_str(&str);
+        out.push('\n');
+    }
+
+    println!("{out}");
+
+    // Fill in the loop map.
+    let mut num_in_loop = 0;
+    for l in 0..map.height {
+        let line = &mut loop_map[l * map.width..(l + 1) * map.width];
+
+        let mut in_loop = false;
+        let mut last_was_outline = false;
+        let mut edge_length = 0;
+        for i in 0..line.len() {
+            let is_loop_outline = line[i] == MapState::Outline;
+            let edge_up = is_loop_outline && !last_was_outline;
+            let edge_down = !is_loop_outline && last_was_outline;
+
+            if is_loop_outline && last_was_outline {
+                edge_length += 1;
+            } else if is_loop_outline {
+                edge_length = 1;
+            }
+
+            // If we hit the edge of the loop outline, toggle the state.
+            if !in_loop {
+                if edge_up {
+                    in_loop = true;
+                }
+            } else {
+                // Toggle the state
+                let should_toggle = (last_was_outline && edge_down && edge_length > 1) || edge_up;
+                if should_toggle {
+                    in_loop = false;
+                }
+            }
+
+            // As long as we are in a loop outline, paint the map in.
+            if in_loop && !is_loop_outline {
+                line[i] = MapState::Included;
+                num_in_loop += 1;
+            }
+
+            // Keep track of the outline for edge detection.
+            last_was_outline = is_loop_outline;
+        }
+    }
+
+    let mut out = String::new();
+    for l in 0..map.height {
+        let line = &loop_map[l * map.width..(l + 1) * map.width];
+        let str = String::from_iter(line.iter().map(|&state| match state {
+            MapState::None => '.',
+            MapState::Outline => '*',
+            MapState::Included => 'I',
+        }));
+        out.push_str(&str);
+        out.push('\n');
+    }
+
+    println!("{out}");
+
+    num_in_loop
 }
 
 /// A 2D coordinate of x an y.
@@ -56,6 +158,7 @@ enum Tile {
 struct Map {
     tiles: Vec<Tile>,
     width: usize,
+    height: usize,
 }
 
 fn parse_tiles(input: &str) -> Map {
@@ -74,7 +177,11 @@ fn parse_tiles(input: &str) -> Map {
     let width = tiles.len() / num_lines;
     assert_eq!(width * num_lines, tiles.len());
 
-    Map { tiles, width }
+    Map {
+        tiles,
+        width,
+        height: num_lines,
+    }
 }
 
 impl Map {
@@ -87,8 +194,12 @@ impl Map {
         Coordinate(pos % self.width, pos / self.width)
     }
 
+    fn to_index(&self, position: Coordinate) -> usize {
+        position.x() + position.y() * self.width
+    }
+
     fn at(&self, position: Coordinate) -> Tile {
-        self.tiles[position.x() + position.y() * self.width]
+        self.tiles[self.to_index(position)]
     }
 
     fn infer_tile(&self, position: &Coordinate) -> Tile {
@@ -360,11 +471,50 @@ mod tests {
     }
 
     #[test]
-    fn test_part2() {
-        // const TEST: &str = "...";
+    fn test_part2_example1() {
+        const TEST: &str = "...........
+            .S-------7.
+            .|F-----7|.
+            .||.....||.
+            .||.....||.
+            .|L-7.F-J|.
+            .|..|.|..|.
+            .L--J.L--J.
+            ...........";
 
-        todo!()
-        // assert_eq!(part2(TEST), todo!());
+        assert_eq!(part2(TEST), 4);
+    }
+
+    #[test]
+    fn test_part2_example2() {
+        const TEST: &str = ".F----7F7F7F7F-7....
+            .|F--7||||||||FJ....
+            .||.FJ||||||||L7....
+            FJL7L7LJLJ||LJ.L-7..
+            L--J.L7...LJS7F-7L7.
+            ....F-J..F7FJ|L7L7L7
+            ....L7.F7||L7|.L7L7|
+            .....|FJLJ|FJ|F7|.LJ
+            ....FJL-7.||.||||...
+            ....L---J.LJ.LJLJ...";
+
+        assert_eq!(part2(TEST), 8);
+    }
+
+    #[test]
+    fn test_part2_example3() {
+        const TEST: &str = "FF7FSF7F7F7F7F7F---7
+            L|LJ||||||||||||F--J
+            FL-7LJLJ||||||LJL-77
+            F--JF--7||LJLJ7F7FJ-
+            L---JF-JLJ.||-FJLJJ7
+            |F|F-JF---7F7-L7L|7|
+            |FFJF7L7F-JF7|JL---7
+            7-L-JL7||F7|L7F-7F7|
+            L.L7LFJ|||||FJL7||LJ
+            L7JLJL-JLJLJL--JLJ.L";
+
+        assert_eq!(part2(TEST), 10);
     }
 
     #[test]
