@@ -77,113 +77,6 @@ pub fn part2(input: &str, print_map: bool) -> usize {
     num_in_loop
 }
 
-fn print_loop_map(map: &Map, small_loop_map: &[MapState]) {
-    let mut out = String::new();
-    for l in 0..(map.height / 2) {
-        let line = &small_loop_map[l * (map.width / 2)..(l + 1) * (map.width / 2)];
-        let str = String::from_iter(line.iter().map(|&state| match state {
-            MapState::None => '.',
-            MapState::Loop => '*',
-            MapState::Outside => 'O',
-            MapState::Widened => '~',
-        }));
-        out.push_str(&str);
-        out.push('\n');
-    }
-    println!("{out}");
-}
-
-fn shrink_loop_map(map: &Map, loop_map: &[MapState]) -> Vec<MapState> {
-    let mut small_loop_map = vec![MapState::None; loop_map.len() / 4];
-    for y in (0..map.height).step_by(2) {
-        for x in (0..map.width).step_by(2) {
-            let index = x + y * map.width;
-            let state = loop_map[index];
-
-            let index = (x / 2) + (y * map.width) / 4;
-            small_loop_map[index] = state;
-        }
-    }
-    small_loop_map
-}
-
-fn flood_fill_outside(map: &Map, loop_map: &mut [MapState]) {
-    let mut seeds = Vec::new();
-    for x in 0..map.width {
-        // Top row.
-        let top_coordinate = Coordinate(x, 0);
-        let top_tile = map.at(top_coordinate);
-        if top_tile == Tile::None || top_tile == Tile::Widened {
-            loop_map[map.to_index(top_coordinate)] = MapState::Outside;
-            seeds.push(top_coordinate);
-        }
-
-        // Bottom row.
-        let bottom_coordinate = Coordinate(x, map.height - 1);
-        let bottom_tile = map.at(bottom_coordinate);
-        if bottom_tile == Tile::None || bottom_tile == Tile::Widened {
-            loop_map[map.to_index(bottom_coordinate)] = MapState::Outside;
-            seeds.push(bottom_coordinate);
-        }
-    }
-
-    for y in 0..map.height {
-        // Top column.
-        let coordinate = Coordinate(0, y);
-        let tile = map.at(coordinate);
-        if tile == Tile::None || tile == Tile::Widened {
-            loop_map[map.to_index(coordinate)] = MapState::Outside;
-            seeds.push(coordinate);
-        }
-
-        // Right column.
-        let coordinate = Coordinate(map.width - 1, y);
-        let tile = map.at(coordinate);
-        if tile == Tile::None || tile == Tile::Widened {
-            loop_map[map.to_index(coordinate)] = MapState::Outside;
-            seeds.push(coordinate);
-        }
-    }
-
-    while let Some(seed) = seeds.pop() {
-        // Check north side.
-        if let Some(coordinate) = seed.maybe_north() {
-            let tile = loop_map[map.to_index(coordinate)];
-            if tile == MapState::None || tile == MapState::Widened {
-                loop_map[map.to_index(coordinate)] = MapState::Outside;
-                seeds.push(coordinate);
-            }
-        }
-
-        // Check east side.
-        if let Some(coordinate) = seed.maybe_east(map) {
-            let tile = loop_map[map.to_index(coordinate)];
-            if tile == MapState::None || tile == MapState::Widened {
-                loop_map[map.to_index(coordinate)] = MapState::Outside;
-                seeds.push(coordinate);
-            }
-        }
-
-        // Check south side.
-        if let Some(coordinate) = seed.maybe_south(map) {
-            let tile = loop_map[map.to_index(coordinate)];
-            if tile == MapState::None || tile == MapState::Widened {
-                loop_map[map.to_index(coordinate)] = MapState::Outside;
-                seeds.push(coordinate);
-            }
-        }
-
-        // Check west side.
-        if let Some(coordinate) = seed.maybe_west() {
-            let tile = loop_map[map.to_index(coordinate)];
-            if tile == MapState::None || tile == MapState::Widened {
-                loop_map[map.to_index(coordinate)] = MapState::Outside;
-                seeds.push(coordinate);
-            }
-        }
-    }
-}
-
 fn prepare_loop_map(map: &Map, start: Coordinate, mut current: Coordinate) -> Vec<MapState> {
     let mut previous = start;
 
@@ -206,6 +99,120 @@ fn prepare_loop_map(map: &Map, start: Coordinate, mut current: Coordinate) -> Ve
         (current, previous) = (next, current);
     }
     loop_map
+}
+
+fn flood_fill_outside(map: &Map, loop_map: &mut [MapState]) {
+    let mut seeds = Vec::new();
+    for x in 0..map.width {
+        // Top row.
+        let coordinate = Coordinate(x, 0);
+        let tile = map.at(coordinate);
+        if tile == Tile::None || tile == Tile::Widened {
+            loop_map[map.to_index(coordinate)] = MapState::Outside;
+            seeds.push(coordinate);
+        }
+
+        // Bottom row.
+        let coordinate = Coordinate(x, map.height - 1);
+        let tile = map.at(coordinate);
+        if tile == Tile::None || tile == Tile::Widened {
+            loop_map[map.to_index(coordinate)] = MapState::Outside;
+            seeds.push(coordinate);
+        }
+    }
+
+    for y in 1..map.height {
+        // Top column.
+        let coordinate = Coordinate(0, y);
+        let tile = map.at(coordinate);
+        if tile == Tile::None || tile == Tile::Widened {
+            loop_map[map.to_index(coordinate)] = MapState::Outside;
+            seeds.push(coordinate);
+        }
+
+        // Right column.
+        let coordinate = Coordinate(map.width - 1, y);
+        let tile = map.at(coordinate);
+        if tile == Tile::None || tile == Tile::Widened {
+            loop_map[map.to_index(coordinate)] = MapState::Outside;
+            seeds.push(coordinate);
+        }
+    }
+
+    seeds.reverse();
+    while let Some(seed) = seeds.pop() {
+        // Check north side.
+        if let Some(coordinate) = seed.maybe_north() {
+            let tile = &mut loop_map[map.to_index(coordinate)];
+            if *tile == MapState::None || *tile == MapState::Widened {
+                *tile = MapState::Outside;
+                seeds.push(coordinate);
+            }
+        } else {
+            let thingy = loop_map[map.to_index(seed)];
+            debug_assert_eq!(thingy, MapState::Outside);
+        }
+
+        // Check east side.
+        if let Some(coordinate) = seed.maybe_east(map) {
+            let tile = &mut loop_map[map.to_index(coordinate)];
+            if *tile == MapState::None || *tile == MapState::Widened {
+                *tile = MapState::Outside;
+                seeds.push(coordinate);
+            }
+        }
+
+        // Check south side.
+        if let Some(coordinate) = seed.maybe_south(map) {
+            let tile = &mut loop_map[map.to_index(coordinate)];
+            if *tile == MapState::None || *tile == MapState::Widened {
+                *tile = MapState::Outside;
+                seeds.push(coordinate);
+            }
+        }
+
+        // Check west side.
+        if let Some(coordinate) = seed.maybe_west() {
+            let tile = &mut loop_map[map.to_index(coordinate)];
+            if *tile == MapState::None || *tile == MapState::Widened {
+                *tile = MapState::Outside;
+                seeds.push(coordinate);
+            }
+        } else {
+            let thingy = loop_map[map.to_index(seed)];
+            debug_assert_eq!(thingy, MapState::Outside);
+        }
+    }
+}
+
+fn shrink_loop_map(map: &Map, loop_map: &[MapState]) -> Vec<MapState> {
+    let mut small_loop_map = vec![MapState::None; loop_map.len() / 4];
+    for y in (0..map.height).step_by(2) {
+        for x in (0..map.width).step_by(2) {
+            let index = x + y * map.width;
+            let state = loop_map[index];
+
+            let index = (x / 2) + (y * map.width) / 4;
+            small_loop_map[index] = state;
+        }
+    }
+    small_loop_map
+}
+
+fn print_loop_map(map: &Map, small_loop_map: &[MapState]) {
+    let mut out = String::new();
+    for l in 0..(map.height / 2) {
+        let line = &small_loop_map[l * (map.width / 2)..(l + 1) * (map.width / 2)];
+        let str = String::from_iter(line.iter().map(|&state| match state {
+            MapState::None => '.',
+            MapState::Loop => '*',
+            MapState::Outside => 'O',
+            MapState::Widened => '~',
+        }));
+        out.push_str(&str);
+        out.push('\n');
+    }
+    println!("{out}");
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -247,14 +254,15 @@ fn parse_tiles(input: &str) -> Map {
         .map(|line| line.trim())
         .filter(|&line| !line.is_empty())
     {
-        // Add the first row.
+        /*
         if tiles.is_empty() {
+            tiles.push(Tile::None);
+            tiles.extend((0..line.len()).map(|_| Tile::None));
             num_lines += 1;
-            tiles.extend((0..line.len() + 1).map(|_| Tile::None));
         }
+        */
 
-        // Start each line with one extra empty tile.
-        tiles.push(Tile::None);
+        // tiles.push(Tile::None);
         tiles.extend(line.chars().map(Tile::from));
         num_lines += 1;
     }
@@ -330,13 +338,54 @@ impl Map {
         let to_index =
             |coordinate: Coordinate| -> usize { coordinate.x() + coordinate.y() * new_width };
 
-        let mut upgrade = |coordinate: Coordinate, new: Tile| {
+        let upgrade = |coordinate: Coordinate, new: Tile, tiles: &mut [Tile]| {
             let tile = &mut tiles[to_index(coordinate)];
             if *tile == Tile::Widened {
                 *tile = new;
             }
         };
 
+        let connects_north = |coordinate: Coordinate, tiles: &[Tile]| {
+            if coordinate.1 < 2 {
+                return false;
+            }
+
+            let tile = tiles[to_index(coordinate)];
+            let other = tiles[to_index(Coordinate(coordinate.0, coordinate.1 - 2))];
+            tile.connects_north() && other.connects_south()
+        };
+
+        let connects_west = |coordinate: Coordinate, tiles: &[Tile]| {
+            if coordinate.0 < 2 {
+                return false;
+            }
+
+            let tile = tiles[to_index(coordinate)];
+            let other = tiles[to_index(Coordinate(coordinate.0 - 2, coordinate.1))];
+            tile.connects_west() && other.connects_east()
+        };
+
+        let connects_east = |coordinate: Coordinate, tiles: &[Tile]| {
+            if coordinate.0 > self.width - 2 {
+                return false;
+            }
+
+            let tile = tiles[to_index(coordinate)];
+            let other = tiles[to_index(Coordinate(coordinate.0 + 2, coordinate.1))];
+            tile.connects_east() && other.connects_west()
+        };
+
+        let connects_south = |coordinate: Coordinate, tiles: &[Tile]| {
+            if coordinate.1 > self.height - 2 {
+                return false;
+            }
+
+            let tile = tiles[to_index(coordinate)];
+            let other = tiles[to_index(Coordinate(coordinate.0, coordinate.1 + 2))];
+            tile.connects_south() && other.connects_north()
+        };
+
+        // Fill in the base map.
         for y in 0..self.height {
             for x in 0..self.width {
                 let coordinate = Coordinate(x, y);
@@ -344,84 +393,99 @@ impl Map {
 
                 // Place the regular tile.
                 let base_coordinate = Coordinate(x * 2, y * 2);
-                upgrade(base_coordinate, tile);
+                upgrade(base_coordinate, tile, &mut tiles);
+            }
+        }
 
+        // Fill in the gaps.
+        for y in 0..self.height {
+            for x in 0..self.width {
+                let coordinate = Coordinate(x, y);
+                let tile = self.at(coordinate);
+
+                let base_coordinate = Coordinate(x * 2, y * 2);
                 match tile {
                     Tile::None => {
                         // Place the tile east to it.
                         let new_coordinate = base_coordinate.east();
-                        upgrade(new_coordinate, Tile::None);
+                        upgrade(new_coordinate, Tile::None, &mut tiles);
 
                         // Place the tile south of it.
                         let new_coordinate = base_coordinate.south();
-                        upgrade(new_coordinate, Tile::None);
+                        upgrade(new_coordinate, Tile::None, &mut tiles);
 
                         // Place the tile southeast of it.
                         let new_coordinate = base_coordinate.southeast();
-                        upgrade(new_coordinate, Tile::None);
+                        upgrade(new_coordinate, Tile::None, &mut tiles);
                     }
                     Tile::Start => {
                         // nothing to do
                     }
                     Tile::NorthSouth => {
                         // Place the tile north to it.
-                        if let Some(new_coordinate) = base_coordinate.maybe_north() {
-                            upgrade(new_coordinate, Tile::NorthSouth);
+                        if connects_north(base_coordinate, &tiles) {
+                            upgrade(base_coordinate.north(), Tile::NorthSouth, &mut tiles);
                         }
 
                         // Place the tile south of it.
-                        let new_coordinate = base_coordinate.south();
-                        upgrade(new_coordinate, Tile::NorthSouth);
+                        if connects_south(base_coordinate, &tiles) {
+                            upgrade(base_coordinate.south(), Tile::NorthSouth, &mut tiles);
+                        }
                     }
                     Tile::WestEast => {
                         // Place the tile west to it.
-                        if let Some(new_coordinate) = base_coordinate.maybe_west() {
-                            upgrade(new_coordinate, Tile::WestEast);
+                        if connects_west(base_coordinate, &tiles) {
+                            upgrade(base_coordinate.west(), Tile::WestEast, &mut tiles);
                         }
 
                         // Place the tile east to it.
-                        let new_coordinate = base_coordinate.east();
-                        upgrade(new_coordinate, Tile::WestEast);
+                        if connects_east(base_coordinate, &tiles) {
+                            upgrade(base_coordinate.east(), Tile::WestEast, &mut tiles);
+                        }
                     }
                     Tile::NorthEast => {
                         // Place the tile north to it.
-                        if let Some(new_coordinate) = base_coordinate.maybe_north() {
-                            upgrade(new_coordinate, Tile::NorthSouth);
+                        if connects_north(base_coordinate, &tiles) {
+                            upgrade(base_coordinate.north(), Tile::NorthSouth, &mut tiles);
                         }
 
                         // Place the tile east to it.
-                        let new_coordinate = base_coordinate.east();
-                        upgrade(new_coordinate, Tile::WestEast);
+                        if connects_east(base_coordinate, &tiles) {
+                            upgrade(base_coordinate.east(), Tile::WestEast, &mut tiles);
+                        }
                     }
                     Tile::NorthWest => {
                         // Place the tile north to it.
-                        if let Some(new_coordinate) = base_coordinate.maybe_north() {
-                            upgrade(new_coordinate, Tile::NorthSouth);
+                        if connects_north(base_coordinate, &tiles) {
+                            upgrade(base_coordinate.north(), Tile::NorthSouth, &mut tiles);
                         }
 
                         // Place the tile west to it.
-                        if let Some(new_coordinate) = base_coordinate.maybe_west() {
-                            upgrade(new_coordinate, Tile::WestEast);
+                        if connects_west(base_coordinate, &tiles) {
+                            upgrade(base_coordinate.west(), Tile::WestEast, &mut tiles);
                         }
                     }
                     Tile::SouthWest => {
                         // Place the tile west to it.
-                        if let Some(new_coordinate) = base_coordinate.maybe_west() {
-                            upgrade(new_coordinate, Tile::WestEast);
+                        if connects_west(base_coordinate, &tiles) {
+                            upgrade(base_coordinate.west(), Tile::WestEast, &mut tiles);
                         }
 
                         // Place the tile south of it.
-                        let new_coordinate = base_coordinate.south();
-                        upgrade(new_coordinate, Tile::NorthSouth);
+                        if connects_south(base_coordinate, &tiles) {
+                            upgrade(base_coordinate.south(), Tile::NorthSouth, &mut tiles);
+                        }
                     }
                     Tile::SouthEast => {
                         // Place the tile east to it.
-                        let new_coordinate = base_coordinate.east();
-                        upgrade(new_coordinate, Tile::WestEast);
+                        if connects_east(base_coordinate, &tiles) {
+                            upgrade(base_coordinate.east(), Tile::WestEast, &mut tiles);
+                        }
 
                         // Place the tile south of it.
-                        let new_coordinate = base_coordinate.south();
-                        upgrade(new_coordinate, Tile::NorthSouth);
+                        if connects_south(base_coordinate, &tiles) {
+                            upgrade(base_coordinate.south(), Tile::NorthSouth, &mut tiles);
+                        }
                     }
                     Tile::Widened => unreachable!(),
                 };
@@ -809,7 +873,7 @@ mod tests {
             .L-J.
             .....";
         let map = parse_tiles(TEST1);
-        assert_eq!(map.find_start(), Coordinate(2, 2));
+        assert_eq!(map.find_start(), Coordinate(1, 1));
 
         const TEST2: &str = "..F7.
             .FJ|.
@@ -817,7 +881,7 @@ mod tests {
             |F--J
             LJ...";
         let map = parse_tiles(TEST2);
-        assert_eq!(map.find_start(), Coordinate(1, 3));
+        assert_eq!(map.find_start(), Coordinate(0, 2));
     }
 
     #[test]
