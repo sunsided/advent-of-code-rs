@@ -49,76 +49,62 @@ pub fn part2(input: &str) -> u64 {
     #[derive(Debug, Copy, Clone, Eq, PartialEq)]
     enum MapState {
         None,
-        Outline,
+        Loop,
         Included,
     }
 
     // Create a map of all tiles that are on the loop.
     // We will later color it in such that all tiles inside the loop are marked.
     let mut loop_map = vec![MapState::None; map.tiles.len()];
-    loop_map[map.to_index(start)] = MapState::Outline;
+    loop_map[map.to_index(start)] = MapState::Loop;
 
     // Walk the loop, filling in the loop outline on the map.
     while current != start {
-        loop_map[map.to_index(current)] = MapState::Outline;
+        loop_map[map.to_index(current)] = MapState::Loop;
         let next = map.at(current).step(current, previous);
         (current, previous) = (next, current);
     }
 
-    let mut out = String::new();
-    for l in 0..map.height {
-        let line = &loop_map[l * map.width..(l + 1) * map.width];
-        let str = String::from_iter(line.iter().map(|&state| match state {
-            MapState::None => '.',
-            MapState::Outline => '*',
-            MapState::Included => 'I',
-        }));
-        out.push_str(&str);
-        out.push('\n');
+    #[derive(Debug, Copy, Clone, Eq, PartialEq)]
+    enum State {
+        Outside,
+        LeadingEdge,
+        Inside,
+        TrailingEdge,
     }
-
-    println!("{out}");
 
     // Fill in the loop map.
     let mut num_in_loop = 0;
     for l in 0..map.height {
         let line = &mut loop_map[l * map.width..(l + 1) * map.width];
+        let mut state = State::Outside;
 
-        let mut in_loop = false;
-        let mut last_was_outline = false;
-        let mut edge_length = 0;
         for i in 0..line.len() {
-            let is_loop_outline = line[i] == MapState::Outline;
-            let edge_up = is_loop_outline && !last_was_outline;
-            let edge_down = !is_loop_outline && last_was_outline;
+            let is_loop_outline = line[i] == MapState::Loop;
 
-            if is_loop_outline && last_was_outline {
-                edge_length += 1;
-            } else if is_loop_outline {
-                edge_length = 1;
-            }
-
-            // If we hit the edge of the loop outline, toggle the state.
-            if !in_loop {
-                if edge_up {
-                    in_loop = true;
-                }
-            } else {
-                // Toggle the state
-                let should_toggle = (last_was_outline && edge_down && edge_length > 1) || edge_up;
-                if should_toggle {
-                    in_loop = false;
-                }
-            }
+            // Update state.
+            state = match (state, is_loop_outline) {
+                (State::Outside, false) => State::Outside,
+                (State::Outside, true) => State::LeadingEdge,
+                (State::LeadingEdge, true) => State::TrailingEdge,
+                (State::LeadingEdge, false) => State::Inside,
+                (State::Inside, false) => State::Inside,
+                (State::Inside, true) => State::TrailingEdge,
+                (State::TrailingEdge, true) => State::TrailingEdge,
+                (State::TrailingEdge, false) => State::Outside,
+            };
 
             // As long as we are in a loop outline, paint the map in.
-            if in_loop && !is_loop_outline {
-                line[i] = MapState::Included;
+            if state == State::Inside {
                 num_in_loop += 1;
             }
 
-            // Keep track of the outline for edge detection.
-            last_was_outline = is_loop_outline;
+            match state {
+                State::Outside => line[i] = MapState::None,
+                State::LeadingEdge => line[i] = MapState::Loop,
+                State::Inside => line[i] = MapState::Included,
+                State::TrailingEdge => line[i] = MapState::Loop,
+            }
         }
     }
 
@@ -127,7 +113,7 @@ pub fn part2(input: &str) -> u64 {
         let line = &loop_map[l * map.width..(l + 1) * map.width];
         let str = String::from_iter(line.iter().map(|&state| match state {
             MapState::None => '.',
-            MapState::Outline => '*',
+            MapState::Loop => '*',
             MapState::Included => 'I',
         }));
         out.push_str(&str);
