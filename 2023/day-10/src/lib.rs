@@ -47,71 +47,11 @@ pub fn part2(input: &str) -> usize {
     let start_tile_index = map.to_index(start);
     map.tiles[start_tile_index] = tile;
 
-    // Get a starting direction.
-    let (mut current, _) = tile.expand(start);
-    let mut previous = start;
-
-    // Walk the loop, filling in the loop outline on the map.
-    let mut polygon = vec![(start.0 as f32 + 0.0f32, start.1 as f32 + 0.0f32)];
-    while current != start {
-        let next = map.at(current).step(current, previous);
-        polygon.push((next.0 as f32 + 0.0f32, next.1 as f32 + 0.0f32));
-        (current, previous) = (next, current);
-    }
-
-    let mut lol = 0;
-    for i in 0..map.tiles.len() {
-        let y = i / map.width;
-        let x = i % map.width;
-
-        let point = map.at(Coordinate(x, y));
-        if point != Tile::None {
-            continue;
-        }
-
-        if is_point_in_polygon((x as f32, y as f32), &polygon) {
-            lol += 1;
-        }
-    }
-
-    println!("Path length: {}", polygon.len());
-    println!("Lol: {lol}");
-
     // Widen the map.
     let map = map.widen();
 
     // Obtain the start position in the widened map.
     let start = Coordinate(start.x() * 2, start.y() * 2);
-
-    // Get a starting direction.
-    let (mut current, _) = tile.expand(start);
-    let mut previous = start;
-
-    // Walk the loop, filling in the loop outline on the map.
-    let mut polygon = vec![(start.0 as f32 + 0.5f32, start.1 as f32 + 0.5f32)];
-    while current != start {
-        let next = map.at(current).step(current, previous);
-        polygon.push((next.0 as f32 + 0.5f32, next.1 as f32 + 0.5f32));
-        (current, previous) = (next, current);
-    }
-
-    let mut lol = 0;
-    for i in 0..map.tiles.len() {
-        let y = i / map.width;
-        let x = i % map.width;
-
-        let point = map.at(Coordinate(x, y));
-        if point != Tile::None && point != Tile::Widened {
-            continue;
-        }
-
-        if is_point_in_polygon((x as f32, y as f32), &polygon) {
-            lol += 1;
-        }
-    }
-
-    println!("Path length: {}", polygon.len());
-    println!("Lol: {lol}");
 
     // Get a starting direction.
     let (mut current, _) = tile.expand(start);
@@ -143,19 +83,19 @@ pub fn part2(input: &str) -> usize {
     let mut seeds = Vec::new();
     for x in 0..map.width {
         // Top row.
-        let coordinate = Coordinate(x, 0);
-        let tile = map.at(coordinate);
-        if tile == Tile::None || tile == Tile::Widened {
-            loop_map[map.to_index(coordinate)] = MapState::Outside;
-            seeds.push(coordinate);
+        let top_coordinate = Coordinate(x, 0);
+        let top_tile = map.at(top_coordinate);
+        if top_tile == Tile::None || top_tile == Tile::Widened {
+            loop_map[map.to_index(top_coordinate)] = MapState::Outside;
+            seeds.push(top_coordinate);
         }
 
         // Bottom row.
-        let coordinate = Coordinate(x, map.height - 1);
-        let tile = map.at(coordinate);
-        if tile == Tile::None || tile == Tile::Widened {
-            loop_map[map.to_index(coordinate)] = MapState::Outside;
-            seeds.push(coordinate);
+        let bottom_coordinate = Coordinate(x, map.height - 1);
+        let bottom_tile = map.at(bottom_coordinate);
+        if bottom_tile == Tile::None || bottom_tile == Tile::Widened {
+            loop_map[map.to_index(bottom_coordinate)] = MapState::Outside;
+            seeds.push(bottom_coordinate);
         }
     }
 
@@ -271,23 +211,6 @@ pub fn part2(input: &str) -> usize {
     num_in_loop
 }
 
-pub fn is_point_in_polygon(p: (f32, f32), polygon: &[(f32, f32)]) -> bool {
-    let mut is_inside = false;
-    let mut j = polygon.len() - 1;
-    for i in 0..polygon.len() {
-        if ((polygon[i].1 > p.1) != (polygon[j].1 > p.1))
-            && (p.0
-                <= (polygon[j].0 - polygon[i].0) * (p.1 - polygon[i].1)
-                    / (polygon[j].1 - polygon[i].1)
-                    + polygon[i].0)
-        {
-            is_inside = !is_inside;
-        }
-        j = i;
-    }
-    is_inside
-}
-
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 enum MapState {
     None,
@@ -327,6 +250,14 @@ fn parse_tiles(input: &str) -> Map {
         .map(|line| line.trim())
         .filter(|&line| !line.is_empty())
     {
+        // Add the first row.
+        if tiles.is_empty() {
+            num_lines += 1;
+            tiles.extend((0..line.len() + 1).map(|_| Tile::None));
+        }
+
+        // Start each line with one extra empty tile.
+        tiles.push(Tile::None);
         tiles.extend(line.chars().map(Tile::from));
         num_lines += 1;
     }
@@ -402,6 +333,13 @@ impl Map {
         let to_index =
             |coordinate: Coordinate| -> usize { coordinate.x() + coordinate.y() * new_width };
 
+        let mut upgrade = |coordinate: Coordinate, new: Tile| {
+            let tile = &mut tiles[to_index(coordinate)];
+            if *tile == Tile::Widened {
+                *tile = new;
+            }
+        };
+
         for y in 0..self.height {
             for x in 0..self.width {
                 let coordinate = Coordinate(x, y);
@@ -409,160 +347,148 @@ impl Map {
 
                 // Place the regular tile.
                 let base_coordinate = Coordinate(x * 2, y * 2);
-                tiles[to_index(base_coordinate)] = tile;
+                upgrade(base_coordinate, tile);
 
                 match tile {
                     Tile::None => {
                         // Place the tile east to it.
                         let new_coordinate = base_coordinate.east();
-                        tiles[to_index(new_coordinate)] = Tile::None;
+                        upgrade(new_coordinate, Tile::None);
 
                         // Place the tile south of it.
                         let new_coordinate = base_coordinate.south();
-                        tiles[to_index(new_coordinate)] = Tile::None;
+                        upgrade(new_coordinate, Tile::None);
 
                         // Place the tile southeast of it.
                         let new_coordinate = base_coordinate.southeast();
-                        tiles[to_index(new_coordinate)] = Tile::None;
+                        upgrade(new_coordinate, Tile::None);
                     }
                     Tile::Start => {
                         // Place the tile east to it.
                         let new_coordinate = base_coordinate.east();
-                        tiles[to_index(new_coordinate)] = Tile::Widened;
+                        upgrade(new_coordinate, Tile::Widened);
 
                         // Place the tile south of it.
                         let new_coordinate = base_coordinate.south();
-                        tiles[to_index(new_coordinate)] = Tile::Widened;
+                        upgrade(new_coordinate, Tile::Widened);
 
                         // Place the tile southeast of it.
                         let new_coordinate = base_coordinate.southeast();
-                        tiles[to_index(new_coordinate)] = Tile::Widened;
+                        upgrade(new_coordinate, Tile::Widened);
                     }
                     Tile::NorthSouth => {
                         // Place the tile north to it.
                         if base_coordinate.has_north() {
                             let new_coordinate = base_coordinate.north();
-                            if tiles[to_index(new_coordinate)] == Tile::Widened {
-                                tiles[to_index(new_coordinate)] = Tile::NorthSouth;
-                            }
+                            upgrade(new_coordinate, Tile::NorthSouth);
                         }
 
                         // Place the tile east to it.
                         let new_coordinate = base_coordinate.east();
-                        tiles[to_index(new_coordinate)] = Tile::Widened;
+                        upgrade(new_coordinate, Tile::Widened);
 
                         // Place the tile south of it.
                         let new_coordinate = base_coordinate.south();
-                        tiles[to_index(new_coordinate)] = Tile::NorthSouth;
+                        upgrade(new_coordinate, Tile::NorthSouth);
 
                         // Place the tile southeast of it.
                         let new_coordinate = base_coordinate.southeast();
-                        tiles[to_index(new_coordinate)] = Tile::Widened;
+                        upgrade(new_coordinate, Tile::Widened);
                     }
                     Tile::WestEast => {
                         // Place the tile west to it.
                         if base_coordinate.has_west() {
                             let new_coordinate = base_coordinate.west();
-                            if tiles[to_index(new_coordinate)] == Tile::Widened {
-                                tiles[to_index(new_coordinate)] = Tile::WestEast;
-                            }
+                            upgrade(new_coordinate, Tile::WestEast);
                         }
 
                         // Place the tile east to it.
                         let new_coordinate = base_coordinate.east();
-                        tiles[to_index(new_coordinate)] = Tile::WestEast;
+                        upgrade(new_coordinate, Tile::WestEast);
 
                         // Place the tile south of it.
                         let new_coordinate = base_coordinate.south();
-                        tiles[to_index(new_coordinate)] = Tile::Widened;
+                        upgrade(new_coordinate, Tile::Widened);
 
                         // Place the tile southeast of it.
                         let new_coordinate = base_coordinate.southeast();
-                        tiles[to_index(new_coordinate)] = Tile::Widened;
+                        upgrade(new_coordinate, Tile::Widened);
                     }
                     Tile::NorthEast => {
                         // Place the tile north to it.
                         if base_coordinate.has_north() {
                             let new_coordinate = base_coordinate.north();
-                            if tiles[to_index(new_coordinate)] == Tile::Widened {
-                                tiles[to_index(new_coordinate)] = Tile::NorthSouth;
-                            }
+                            upgrade(new_coordinate, Tile::NorthSouth);
                         }
 
                         // Place the tile east to it.
                         let new_coordinate = base_coordinate.east();
-                        tiles[to_index(new_coordinate)] = Tile::WestEast;
+                        upgrade(new_coordinate, Tile::WestEast);
 
                         // Place the tile south of it.
                         let new_coordinate = base_coordinate.south();
-                        tiles[to_index(new_coordinate)] = Tile::Widened;
+                        upgrade(new_coordinate, Tile::Widened);
 
                         // Place the tile southeast of it.
                         let new_coordinate = base_coordinate.southeast();
-                        tiles[to_index(new_coordinate)] = Tile::Widened;
+                        upgrade(new_coordinate, Tile::Widened);
                     }
                     Tile::NorthWest => {
                         // Place the tile north to it.
                         if base_coordinate.has_north() {
                             let new_coordinate = base_coordinate.north();
-                            if tiles[to_index(new_coordinate)] == Tile::Widened {
-                                tiles[to_index(new_coordinate)] = Tile::NorthSouth;
-                            }
+                            upgrade(new_coordinate, Tile::NorthSouth);
                         }
 
                         // Place the tile west to it.
                         if base_coordinate.has_west() {
                             let new_coordinate = base_coordinate.west();
-                            if tiles[to_index(new_coordinate)] == Tile::Widened {
-                                tiles[to_index(new_coordinate)] = Tile::WestEast;
-                            }
+                            upgrade(new_coordinate, Tile::WestEast);
                         }
 
                         // Place the tile east to it.
                         let new_coordinate = base_coordinate.east();
-                        tiles[to_index(new_coordinate)] = Tile::Widened;
+                        upgrade(new_coordinate, Tile::Widened);
 
                         // Place the tile south of it.
                         let new_coordinate = base_coordinate.south();
-                        tiles[to_index(new_coordinate)] = Tile::Widened;
+                        upgrade(new_coordinate, Tile::Widened);
 
                         // Place the tile southeast of it.
                         let new_coordinate = base_coordinate.southeast();
-                        tiles[to_index(new_coordinate)] = Tile::Widened;
+                        upgrade(new_coordinate, Tile::Widened);
                     }
                     Tile::SouthWest => {
                         // Place the tile west to it.
                         if base_coordinate.has_west() {
                             let new_coordinate = base_coordinate.west();
-                            if tiles[to_index(new_coordinate)] == Tile::Widened {
-                                tiles[to_index(new_coordinate)] = Tile::WestEast;
-                            }
+                            upgrade(new_coordinate, Tile::WestEast);
                         }
 
                         // Place the tile east to it.
                         let new_coordinate = base_coordinate.east();
-                        tiles[to_index(new_coordinate)] = Tile::Widened;
+                        upgrade(new_coordinate, Tile::Widened);
 
                         // Place the tile south of it.
                         let new_coordinate = base_coordinate.south();
-                        tiles[to_index(new_coordinate)] = Tile::NorthSouth;
+                        upgrade(new_coordinate, Tile::NorthSouth);
 
                         // Place the tile southeast of it.
                         let new_coordinate = base_coordinate.southeast();
-                        tiles[to_index(new_coordinate)] = Tile::Widened;
+                        upgrade(new_coordinate, Tile::Widened);
                     }
                     Tile::SouthEast => {
                         // Place the tile east to it.
                         let new_coordinate = base_coordinate.east();
-                        tiles[to_index(new_coordinate)] = Tile::WestEast;
+                        upgrade(new_coordinate, Tile::WestEast);
 
                         // Place the tile south of it.
                         let new_coordinate = base_coordinate.south();
-                        tiles[to_index(new_coordinate)] = Tile::NorthSouth;
+                        upgrade(new_coordinate, Tile::NorthSouth);
 
                         // Place the tile southeast of it.
                         let new_coordinate = base_coordinate.southeast();
-                        tiles[to_index(new_coordinate)] = Tile::Widened;
+                        upgrade(new_coordinate, Tile::Widened);
                     }
                     Tile::Widened => unreachable!(),
                 };
@@ -905,6 +831,12 @@ mod tests {
     }
 
     #[test]
+    fn test_part2_real() {
+        const TEST: &str = include_str!("../input.txt");
+        assert_ne!(part2(TEST), 357);
+    }
+
+    #[test]
     fn test_parse_map() {
         const TEST1: &str = ".....
             .S-7.
@@ -912,7 +844,7 @@ mod tests {
             .L-J.
             .....";
         let map = parse_tiles(TEST1);
-        assert_eq!(map.find_start(), Coordinate(1, 1));
+        assert_eq!(map.find_start(), Coordinate(2, 2));
 
         const TEST2: &str = "..F7.
             .FJ|.
@@ -920,7 +852,7 @@ mod tests {
             |F--J
             LJ...";
         let map = parse_tiles(TEST2);
-        assert_eq!(map.find_start(), Coordinate(0, 2));
+        assert_eq!(map.find_start(), Coordinate(1, 3));
     }
 
     #[test]
