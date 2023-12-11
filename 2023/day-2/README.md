@@ -1,4 +1,4 @@
-# Day 2: Cube Conundrum
+# 2023 Day 2: Cube Conundrum
 
 See the original puzzle description [here].
 

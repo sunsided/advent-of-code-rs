@@ -1,4 +1,4 @@
-# Day 6: Wait for It
+# 2023 Day 6: Wait for It
 
 See the original puzzle description [here].
 

@@ -1,4 +1,4 @@
-# Day 10: Pipe Maze
+# 2023 Day 10: Pipe Maze
 
 See the original puzzle description [here].
 

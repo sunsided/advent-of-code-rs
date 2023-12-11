@@ -1,4 +1,4 @@
-# Day 8: Haunted Wasteland
+# 2023 Day 8: Haunted Wasteland
 
 See the original puzzle description [here].
 

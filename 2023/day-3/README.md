@@ -1,4 +1,4 @@
-# Day 3: Gear Ratios
+# 2023 Day 3: Gear Ratios
 
 See the original puzzle description [here].
 

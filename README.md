@@ -14,6 +14,7 @@ Solutions to [Advent of Code], implemented in Rust.
 - 🗺️ [Day 8: Haunted Wasteland](2023/day-8)
 - 🏜️ [Day 9: Mirage Maintenance](2023/day-9)
 - 🐁 [Day 10: Pipe Maze](2023/day-10)
+- ✨ [Day 11: Cosmic Expansion](2023/day-11)
 
 ## 1=11-2 (2022)
 

@@ -1,4 +1,4 @@
-# Day 4: Scratchcards
+# 2023 Day 4: Scratchcards
 
 See the original puzzle description [here].
 
