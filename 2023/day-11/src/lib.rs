@@ -3,26 +3,15 @@ use std::collections::HashSet;
 /// Solution for part 1.
 pub fn part1(input: &str) -> usize {
     let (galaxies, width, height) = parse_galaxies(input);
-    let galaxies = expand_universe(galaxies, width, height);
-
-    let mut distance_sum = 0;
-    let galaxies = galaxies.as_slice();
-    for (i, galaxy) in galaxies[..galaxies.len() - 1].iter().enumerate() {
-        for other in &galaxies[(i + 1)..] {
-            // Calculate taxicab/Manhattan distance.
-            let dx = galaxy.x.max(other.x) - galaxy.x.min(other.x);
-            let dy = galaxy.y.max(other.y) - galaxy.y.min(other.y);
-            let distance = dx + dy;
-            distance_sum += distance;
-        }
-    }
-
-    distance_sum
+    let galaxies = expand_universe(galaxies, width, height, 2);
+    sum_shortest_distances(galaxies)
 }
 
 /// Solution for part 2.
 pub fn part2(input: &str) -> usize {
-    todo!()
+    let (galaxies, width, height) = parse_galaxies(input);
+    let galaxies = expand_universe(galaxies, width, height, 1000000);
+    sum_shortest_distances(galaxies)
 }
 
 fn parse_galaxies(input: &str) -> (Vec<Galaxy>, usize, usize) {
@@ -56,7 +45,16 @@ fn parse_galaxies(input: &str) -> (Vec<Galaxy>, usize, usize) {
     (galaxies, width, height)
 }
 
-fn expand_universe(mut galaxies: Vec<Galaxy>, width: usize, height: usize) -> Vec<Galaxy> {
+fn expand_universe(
+    mut galaxies: Vec<Galaxy>,
+    width: usize,
+    height: usize,
+    expansion: usize,
+) -> Vec<Galaxy> {
+    // Subtract one: For a 2-time increase we add 1 to the existing.
+    //               For a 10-time increase we add 9 to the existing.
+    let expansion = expansion - 1;
+
     let rows: HashSet<usize> = HashSet::from_iter(0..height);
     let columns: HashSet<usize> = HashSet::from_iter(0..width);
     let observed_rows = HashSet::from_iter(galaxies.iter().map(|g| g.y));
@@ -69,7 +67,7 @@ fn expand_universe(mut galaxies: Vec<Galaxy>, width: usize, height: usize) -> Ve
         for galaxy in galaxies.iter_mut() {
             debug_assert_ne!(galaxy.y, row);
             if galaxy.y >= row {
-                galaxy.y += 1;
+                galaxy.y += expansion;
             }
         }
     }
@@ -81,12 +79,27 @@ fn expand_universe(mut galaxies: Vec<Galaxy>, width: usize, height: usize) -> Ve
         for galaxy in galaxies.iter_mut() {
             debug_assert_ne!(galaxy.x, column);
             if galaxy.x >= column {
-                galaxy.x += 1;
+                galaxy.x += expansion;
             }
         }
     }
 
     galaxies
+}
+
+fn sum_shortest_distances(galaxies: Vec<Galaxy>) -> usize {
+    let mut distance_sum = 0;
+    let galaxies = galaxies.as_slice();
+    for (i, galaxy) in galaxies[..galaxies.len() - 1].iter().enumerate() {
+        for other in &galaxies[(i + 1)..] {
+            // Calculate taxicab/Manhattan distance.
+            let dx = galaxy.x.max(other.x) - galaxy.x.min(other.x);
+            let dy = galaxy.y.max(other.y) - galaxy.y.min(other.y);
+            let distance = dx + dy;
+            distance_sum += distance;
+        }
+    }
+    distance_sum
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
@@ -118,7 +131,30 @@ mod tests {
 
     #[test]
     fn test_part2() {
-        todo!()
+        const INPUT: &str = "...#......
+            .......#..
+            #.........
+            ..........
+            ......#...
+            .#........
+            .........#
+            ..........
+            .......#..
+            #...#.....
+            ";
+        let (galaxies, width, height) = parse_galaxies(INPUT);
+
+        // Base case
+        let expanded = expand_universe(galaxies.clone(), width, height, 2);
+        assert_eq!(sum_shortest_distances(expanded), 374);
+
+        // Example 1
+        let expanded = expand_universe(galaxies.clone(), width, height, 10);
+        assert_eq!(sum_shortest_distances(expanded), 1030);
+
+        // Example 2
+        let expanded = expand_universe(galaxies.clone(), width, height, 100);
+        assert_eq!(sum_shortest_distances(expanded), 8410);
     }
 
     #[test]
@@ -134,7 +170,7 @@ mod tests {
             .......#..
             #...#.....
             ";
-        let (mut galaxies, width, height) = parse_galaxies(INPUT);
+        let (galaxies, width, height) = parse_galaxies(INPUT);
         assert_eq!(width, 10);
         assert_eq!(height, 9);
 
@@ -164,7 +200,7 @@ mod tests {
             #...#.....
             ";
         let (galaxies, width, height) = parse_galaxies(INPUT);
-        let galaxies = expand_universe(galaxies, width, height);
+        let galaxies = expand_universe(galaxies, width, height, 2);
 
         let mut galaxies = galaxies.into_iter();
         assert_eq!(galaxies.next(), Some(Galaxy { id: 1, x: 4, y: 0 }));
