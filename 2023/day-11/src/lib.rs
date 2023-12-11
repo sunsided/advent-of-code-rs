@@ -51,8 +51,8 @@ fn expand_universe(
     height: usize,
     expansion: usize,
 ) -> Vec<Galaxy> {
-    // Subtract one: For a 2-time increase we add 1 to the existing.
-    //               For a 10-time increase we add 9 to the existing.
+    // Subtract one: For a 2-fold increase we add 1 to the existing.
+    //               For a 10-fold increase we add 9 to the existing.
     let expansion = expansion - 1;
 
     let rows: HashSet<usize> = HashSet::from_iter(0..height);
@@ -60,27 +60,23 @@ fn expand_universe(
     let observed_rows = HashSet::from_iter(galaxies.iter().map(|g| g.y));
     let observed_columns = HashSet::from_iter(galaxies.iter().map(|g| g.x));
 
-    // Find rows that contain no galaxies and double their width.
+    // Find rows that contain no galaxies and expand their height.
+    // We do this by adding the required y increment to all galaxies below it.
     let mut missing_rows: Vec<_> = rows.difference(&observed_rows).cloned().collect();
     missing_rows.sort_unstable();
     for row in missing_rows.into_iter().rev() {
-        for galaxy in galaxies.iter_mut() {
-            debug_assert_ne!(galaxy.y, row);
-            if galaxy.y >= row {
-                galaxy.y += expansion;
-            }
+        for galaxy in galaxies.iter_mut().rev().take_while(|g| g.y > row) {
+            galaxy.y += expansion;
         }
     }
 
-    // Find columns that contain no galaxies and double their height.
+    // Find columns that contain no galaxies and expand their width.
+    // We do this by adding the required x increment to all galaxies to the right of it.
     let mut missing_columns: Vec<_> = columns.difference(&observed_columns).cloned().collect();
     missing_columns.sort_unstable();
     for column in missing_columns.into_iter().rev() {
-        for galaxy in galaxies.iter_mut() {
-            debug_assert_ne!(galaxy.x, column);
-            if galaxy.x >= column {
-                galaxy.x += expansion;
-            }
+        for galaxy in galaxies.iter_mut().filter(|g| g.x > column) {
+            galaxy.x += expansion;
         }
     }
 
