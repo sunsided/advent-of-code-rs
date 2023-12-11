@@ -4,6 +4,6 @@ const INPUT: &str = include_str!("../input.txt");
 
 fn main() {
     println!("2023 Day 11: Cosmic Expansion");
-    println!("Part 2: {}", part1(INPUT));
-    println!("Part 2: {}", part2(INPUT, true));
+    println!("Sum of shortest pairwise distances: {}", part1(INPUT));
+    println!("Part 2: {}", part2(INPUT));
 }
