@@ -1,8 +1,14 @@
 use aoc_utils::parse_whitespace_delimited;
+use std::collections::HashMap;
 
 pub fn first_part(input: &str) -> i128 {
     let (lhs, rhs) = split_values(input);
     sum_distances(&lhs, &rhs)
+}
+
+pub fn second_part(input: &str) -> i128 {
+    let (lhs, rhs) = split_values(input);
+    sum_scores(&lhs, &rhs)
 }
 
 fn split_values(input: &str) -> (Vec<i128>, Vec<i128>) {
@@ -28,4 +34,42 @@ fn sum_distances(lhs: &[i128], rhs: &[i128]) -> i128 {
         .map(|(&a, &b)| (a.max(b), a.min(b)))
         .map(|(a, b)| a - b)
         .sum()
+}
+
+fn sum_scores(lhs: &[i128], rhs: &[i128]) -> i128 {
+    let rhs = count_occurrences(rhs);
+
+    lhs.iter()
+        .map(|&num| {
+            let count = rhs.get(&num).unwrap_or(&0);
+            num * (*count) as i128
+        })
+        .sum()
+}
+
+fn count_occurrences(values: &[i128]) -> HashMap<i128, usize> {
+    let mut occurrences = HashMap::new();
+    for &value in values {
+        *occurrences.entry(value).or_insert(0) += 1;
+    }
+    occurrences
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const INPUT: &str = "
+        3    4
+        4    3
+        2    5
+        1    3
+        3    9
+        3    3
+    ";
+
+    #[test]
+    fn test_second_part() {
+        assert_eq!(second_part(INPUT), 31);
+    }
 }
