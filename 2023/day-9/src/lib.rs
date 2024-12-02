@@ -69,6 +69,7 @@ fn differentiate<H: AsRef<[i64]>>(values: H) -> Vec<i64> {
 mod tests {
     use super::*;
 
+    #[allow(dead_code)]
     const INPUT: &str = include_str!("../input.txt");
 
     #[test]
