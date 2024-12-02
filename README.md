@@ -2,6 +2,10 @@
 
 Solutions to [Advent of Code], implemented in Rust.
 
+## 1=110- (2024)
+
+- 📜 [Day 1: Historian Hysteria](2024/day-1)
+
 ## 1=110= (2023)
 
 - 🚀 [Day 1: Trebuchet?!](2023/day-1)
