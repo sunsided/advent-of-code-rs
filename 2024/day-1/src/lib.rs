@@ -48,15 +48,15 @@ fn sum_scores(sorted_lhs: &[i128], sorted_rhs: &[i128]) -> i128 {
 
     while let (Some(lhs_item), Some(rhs_item)) = (lhs_entry.as_ref(), rhs_entry.as_ref()) {
         match (lhs_item, rhs_item) {
-            (lhs, rhs) if lhs.value == rhs.value => {
+            (lhs, rhs) if lhs == rhs => {
                 total_sum += lhs.value * (lhs.count as i128) * (rhs.count as i128);
                 lhs_entry = lhs_iter.next();
                 rhs_entry = rhs_iter.next();
             }
-            (lhs, rhs) if lhs.value < rhs.value => {
+            (lhs, rhs) if lhs < rhs => {
                 lhs_entry = lhs_iter.next();
             }
-            (lhs, rhs) if lhs.value > rhs.value => {
+            (lhs, rhs) if lhs > rhs => {
                 rhs_entry = rhs_iter.next();
             }
             _ => unreachable!(),
@@ -69,6 +69,18 @@ fn sum_scores(sorted_lhs: &[i128], sorted_rhs: &[i128]) -> i128 {
 struct Item {
     value: i128,
     count: usize,
+}
+
+impl PartialEq for Item {
+    fn eq(&self, other: &Self) -> bool {
+        self.value == other.value
+    }
+}
+
+impl PartialOrd for Item {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.value.partial_cmp(&other.value)
+    }
 }
 
 fn count_occurrences(sorted_lhs: &[i128]) -> Vec<Item> {
