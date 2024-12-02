@@ -37,12 +37,13 @@ fn sum_distances(lhs: &[i128], rhs: &[i128]) -> i128 {
 }
 
 fn sum_scores(lhs: &[i128], rhs: &[i128]) -> i128 {
+    let lhs = count_occurrences(lhs);
     let rhs = count_occurrences(rhs);
 
     lhs.iter()
-        .map(|&num| {
-            let count = rhs.get(&num).unwrap_or(&0);
-            num * (*count) as i128
+        .filter_map(|(num, &lhs_count)| {
+            rhs.get(num)
+                .map(|&rhs_count| *num * lhs_count as i128 * rhs_count as i128)
         })
         .sum()
 }
