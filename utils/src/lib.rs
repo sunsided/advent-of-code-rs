@@ -1,3 +1,4 @@
+use std::ops::Sub;
 use std::str::FromStr;
 
 /// Parses whitespace-delimited values from an input string.
@@ -51,6 +52,24 @@ where
     T: FromStr,
 {
     input.split_whitespace().map(T::from_str).collect()
+}
+
+/// Determines the absolute difference between two numbers.
+///
+/// ## Example
+/// ```
+/// use aoc_utils::delta;
+/// assert_eq!(delta(0_u8, 10_u8), 10_u8);
+/// ```
+pub fn delta<T>(a: T, b: T) -> T
+where
+    T: PartialOrd<T> + Sub<T, Output = T>,
+{
+    if a <= b {
+        b - a
+    } else {
+        a - b
+    }
 }
 
 #[cfg(test)]

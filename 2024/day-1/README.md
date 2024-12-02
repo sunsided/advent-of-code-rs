@@ -3,7 +3,7 @@
 See the original puzzle description [here].
 
 ```shell
-cargo run --example 2023-day-1
+cargo run --example 2024-day-1
 ```
 
 ## Part One
