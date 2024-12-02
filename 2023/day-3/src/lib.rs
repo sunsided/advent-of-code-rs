@@ -617,9 +617,9 @@ mod tests {
     #[test]
     fn test_contains_symbol() {
         let map = SymbolMap::from_str("...$.*....\n.....*.58.").expect("failed to parse input");
-        assert_eq!(map.contains_symbol(0.., 0), true);
-        assert_eq!(map.contains_symbol(3..=3, 0), true);
-        assert_eq!(map.contains_symbol(3..=3, 1), false);
+        assert!(map.contains_symbol(0.., 0));
+        assert!(map.contains_symbol(3..=3, 0));
+        assert!(!map.contains_symbol(3..=3, 1));
         assert_eq!(map.potential_gears.len(), 2);
     }
 

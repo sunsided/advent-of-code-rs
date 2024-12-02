@@ -360,7 +360,7 @@ mod tests {
         total_blue: u32,
     ) {
         let result = Game::from_str(input);
-        assert!(!result.is_err(), "Parsing failed with error {result:?}");
+        assert!(result.is_ok(), "Parsing failed with error {result:?}");
 
         let game = result.unwrap();
         assert_eq!(

@@ -81,7 +81,7 @@ impl FromStr for Card {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let colon_pos = s
-            .find(|c| c == ':')
+            .find(':')
             .ok_or(ParseCardError("missing card separator"))?;
         if !s.starts_with("Card ") {
             return Err(ParseCardError("invalid prefix"));
@@ -94,7 +94,7 @@ impl FromStr for Card {
 
         let s = &s[colon_pos + 1..];
         let bar_pos = s
-            .find(|c| c == '|')
+            .find('|')
             .ok_or(ParseCardError("missing number separator"))?;
 
         let winning_numbers = s[..bar_pos].trim();
